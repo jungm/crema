@@ -146,8 +146,9 @@ public final class RequestValidator {
     }
 
     /**
-     * Decodes a header value: trims it, rejects characters outside visible ASCII, space and tab, and decodes the
-     * Base64 sentinel {@code =?base64?...?=} as UTF-8.
+     * Decodes a header value: joins repeated fields with {@code ,} (which Runtimes may split a value at), trims it,
+     * rejects characters outside visible ASCII, space and tab, and decodes the Base64 sentinel
+     * {@code =?base64?...?=} as UTF-8.
      *
      * @return the value, or {@code null} if the header is absent
      * @throws IllegalArgumentException if the value is malformed
@@ -156,10 +157,7 @@ public final class RequestValidator {
         if (values == null || values.isEmpty()) {
             return null;
         }
-        if (values.size() > 1) {
-            throw new IllegalArgumentException("must be sent once");
-        }
-        String value = values.get(0).strip();
+        String value = String.join(",", values).strip();
         for (int i = 0; i < value.length(); i++) {
             char c = value.charAt(i);
             if (c != '\t' && (c < 0x20 || c > 0x7e)) {

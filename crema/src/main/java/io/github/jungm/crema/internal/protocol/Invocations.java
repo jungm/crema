@@ -1,7 +1,6 @@
 package io.github.jungm.crema.internal.protocol;
 
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.function.Function;
@@ -159,7 +158,7 @@ final class Invocations {
             throw McpError.invalidParams("Unknown reference type: " + type);
         }
         checkAccess(call, target);
-        CompletionResult result = CompletionResult.newCompleteResult(List.of());
+        CompletionResult result = CompletionResult.builder().setHasMore(false).build();
         if (completion.isPresent()) {
             checkAccess(call, completion.get());
             Object value = invoke(call, completion.get(),

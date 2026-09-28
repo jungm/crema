@@ -218,7 +218,7 @@ public final class FeatureScanner {
             }
             arguments.add(argument.name());
         }
-        if (!variables.equals(arguments)) {
+        if (errors.isEmpty() && !variables.equals(arguments)) {
             errors.add("the variables " + variables + " of URI template '" + template.uriTemplate()
                     + "' don't match its String parameters " + arguments);
         }

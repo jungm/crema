@@ -112,12 +112,14 @@ public final class ServerRegistry {
 
     private static void checkServer(String server, List<Feature> features, List<String> problems) {
         String in = " in MCP Server '" + display(server) + "'";
-        unique(features, Feature.Tool.class, Feature::name, "Tool name", in, problems);
-        unique(features, Feature.Resource.class, Feature::name, "Resource name", in, problems);
-        unique(features, Feature.Resource.class, Feature.Resource::uri, "resource URI", in, problems);
-        unique(features, Feature.ResourceTemplate.class, Feature::name, "Resource Template name", in, problems);
-        unique(features, Feature.Prompt.class, Feature::name, "Prompt name", in, problems);
-        unique(features, Feature.Completion.class, Feature::name, "Completion Method for", in, problems);
+        unique(features, Feature.Tool.class, Feature::name, quoted("Tool name"), in, problems);
+        unique(features, Feature.Resource.class, Feature::name, quoted("Resource name"), in, problems);
+        unique(features, Feature.Resource.class, Feature.Resource::uri, quoted("resource URI"), in, problems);
+        unique(features, Feature.ResourceTemplate.class, Feature::name, quoted("Resource Template name"), in,
+                problems);
+        unique(features, Feature.Prompt.class, Feature::name, quoted("Prompt name"), in, problems);
+        unique(features, Feature.Completion.class, Feature::name, key -> "Completion Method for " + key, in,
+                problems);
         for (Feature feature : features) {
             if (feature instanceof Feature.Completion completion) {
                 checkCompletion(completion, features, in, problems);
@@ -150,15 +152,19 @@ public final class ServerRegistry {
         }
     }
 
+    private static Function<String, String> quoted(String what) {
+        return key -> what + " '" + key + "'";
+    }
+
     private static <F extends Feature> void unique(List<Feature> features, Class<F> type, Function<F, String> key,
-            String what, String in, List<String> problems) {
+            Function<String, String> what, String in, List<String> problems) {
         Map<String, F> seen = new HashMap<>();
         for (Feature feature : features) {
             if (type.isInstance(feature)) {
                 F typed = type.cast(feature);
                 F previous = seen.putIfAbsent(key.apply(typed), typed);
                 if (previous != null) {
-                    problems.add(where(feature) + ": duplicate " + what + " '" + key.apply(typed) + "'" + in
+                    problems.add(where(feature) + ": duplicate " + what.apply(key.apply(typed)) + in
                             + ", also used by " + previous.method().describe());
                 }
             }
