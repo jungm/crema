@@ -189,7 +189,7 @@ class InvocationsTest {
     }
 
     static JsonObject handle(McpServerModel server, String method, jakarta.json.JsonObjectBuilder params) {
-        JsonObject meta = Json.object().add("io.modelcontextprotocol/protocolVersion", Dispatcher.PROTOCOL_VERSION)
+        JsonObject meta = Json.object().add(Mcp.META_PROTOCOL_VERSION, Mcp.PROTOCOL_VERSION)
                 .add("io.modelcontextprotocol/clientCapabilities", Json.object()).build();
         Request request = new Request(Json.PROVIDER.createValue(1), method, params.add("_meta", meta).build());
         return DISPATCHER.handle(server, request, Caller.ANONYMOUS, ProgressChannel.NONE).message();

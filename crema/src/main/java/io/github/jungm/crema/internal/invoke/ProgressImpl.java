@@ -16,6 +16,7 @@ import org.mcpjava.server.progress.ProgressTracker;
 
 import io.github.jungm.crema.internal.json.ProtocolJson;
 import io.github.jungm.crema.internal.json.Json;
+import io.github.jungm.crema.internal.protocol.Mcp;
 import jakarta.json.JsonObjectBuilder;
 import jakarta.json.JsonValue;
 
@@ -67,7 +68,7 @@ public final class ProgressImpl implements Progress {
                     "Progress must increase with each notification, but " + progress + " follows " + last));
         }
         last = progress;
-        JsonObjectBuilder params = Json.object().add("progressToken", token.json()).add("progress", progress);
+        JsonObjectBuilder params = Json.object().add(Mcp.PROGRESS_TOKEN, token.json()).add("progress", progress);
         if (total != null) {
             params.add("total", total);
         }
@@ -77,7 +78,7 @@ public final class ProgressImpl implements Progress {
         if (!metadata.isEmpty()) {
             params.add("_meta", ProtocolJson.meta(metadata, encoder));
         }
-        return channel.send(Json.object().add("jsonrpc", "2.0").add("method", "notifications/progress")
+        return channel.send(Json.object().add("jsonrpc", "2.0").add("method", Mcp.NOTIFICATIONS_PROGRESS)
                 .add("params", params).build());
     }
 

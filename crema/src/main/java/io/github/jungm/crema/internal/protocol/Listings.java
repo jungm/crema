@@ -23,7 +23,7 @@ final class Listings {
         McpServerModel server = call.server();
         JsonObject empty = Json.object().build();
         JsonObjectBuilder result = Json.object()
-                .add("supportedVersions", Json.FACTORY.createArrayBuilder().add(Dispatcher.PROTOCOL_VERSION))
+                .add("supportedVersions", Json.FACTORY.createArrayBuilder().add(Mcp.PROTOCOL_VERSION))
                 .add("capabilities", Json.object().add("tools", empty).add("resources", empty).add("prompts", empty)
                         .add("completions", empty));
         String instructions = server.settings().instructions();
