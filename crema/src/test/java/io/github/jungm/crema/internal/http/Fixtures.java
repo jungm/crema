@@ -98,6 +98,11 @@ final class Fixtures {
         public void nothing() {
         }
 
+        @Tool(description = "Throws an Error")
+        public String fatal(Progress progress) {
+            throw new LinkageError("secret linkage problem");
+        }
+
         @Tool(description = "Who calls")
         public String whoami(McpRequest request) {
             return request.clientInfo().name() + " " + request.id() + " " + request.metadata();

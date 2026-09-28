@@ -1,6 +1,5 @@
 package io.github.jungm.crema.internal.http;
 
-import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.util.List;
 import java.util.Map;
@@ -21,10 +20,12 @@ import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.MultivaluedMap;
 
 /**
- * Screens every request to the MCP Endpoint before resource matching ({@code Origin}, authentication) and validates
- * {@code POST}s, answering invalid ones itself. For a valid {@code POST} it sets {@code Accept} to
- * {@code text/event-stream} or {@code application/json}, which selects the {@link McpEndpoint} method that
- * streams or responds with JSON.
+ * Handles every request to the MCP Endpoint before resource matching: the {@code Origin} check and
+ * authentication, {@code 405} for anything but {@code POST}, and reading and validating a {@code POST}, answering
+ * invalid ones itself. A valid {@code POST} is handed to {@link McpEndpoint} as a request property, with
+ * {@code Content-Type} set to {@link McpEndpoint#PLANNED} and {@code Accept} set to {@code text/event-stream} or
+ * {@code application/json}, which selects the resource method that streams or responds with JSON. Only
+ * {@code McpApplication}s register this filter.
  */
 @PreMatching
 public class McpEndpointFilter implements ContainerRequestFilter, ContainerResponseFilter {
@@ -53,17 +54,21 @@ public class McpEndpointFilter implements ContainerRequestFilter, ContainerRespo
             return;
         }
         if (!HttpMethod.POST.equals(request.getMethod())) {
+            request.abortWith(JaxRs.response(new HttpReply(405, Map.of(HttpHeaders.ALLOW, HttpMethod.POST), null)));
             return;
         }
-        byte[] body = request.getEntityStream().readAllBytes();
-        request.setEntityStream(new ByteArrayInputStream(body));
-        McpTransport.Plan plan = transport.plan(target.get().server(), body, headers, caller);
+        McpTransport.Plan plan = transport.plan(target.get().server(), request.getEntityStream(),
+                request.getLength(), headers, caller);
         if (plan instanceof McpTransport.Reply reply) {
             request.abortWith(JaxRs.response(reply.reply()));
-        } else {
-            accept(request.getHeaders(), plan instanceof McpTransport.Stream ? MediaType.SERVER_SENT_EVENTS
-                    : MediaType.APPLICATION_JSON);
+            return;
         }
+        request.setProperty(McpEndpoint.PLAN_PROPERTY, new McpEndpoint.Planned(transport, target.get().server(),
+                plan, caller));
+        MultivaluedMap<String, String> requestHeaders = request.getHeaders();
+        replace(requestHeaders, HttpHeaders.CONTENT_TYPE, McpEndpoint.PLANNED);
+        replace(requestHeaders, HttpHeaders.ACCEPT, plan instanceof McpTransport.Stream
+                ? MediaType.SERVER_SENT_EVENTS : MediaType.APPLICATION_JSON);
     }
 
     @Override
@@ -73,8 +78,8 @@ public class McpEndpointFilter implements ContainerRequestFilter, ContainerRespo
         }
     }
 
-    private static void accept(MultivaluedMap<String, String> headers, String mediaType) {
-        headers.keySet().removeIf(HttpHeaders.ACCEPT::equalsIgnoreCase);
-        headers.putSingle(HttpHeaders.ACCEPT, mediaType);
+    private static void replace(MultivaluedMap<String, String> headers, String name, String value) {
+        headers.keySet().removeIf(name::equalsIgnoreCase);
+        headers.putSingle(name, value);
     }
 }

@@ -94,7 +94,10 @@ public final class Dispatcher {
             return error(request.id(), e);
         } catch (RejectedException e) {
             throw e;
-        } catch (RuntimeException e) {
+        } catch (RuntimeException | Error e) {
+            if (e instanceof VirtualMachineError error) {
+                throw error;
+            }
             LOG.log(Level.WARNING, "Handling " + request.method() + " failed", e);
             return error(request.id(), McpError.internal("Internal error"));
         }

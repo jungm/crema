@@ -306,6 +306,55 @@ class McpTransportTest {
     }
 
     @Test
+    void errorsFromFeatureMethodsBecomeInternalErrors() {
+        Exchange json = call("tools/call", ",\"name\":\"fatal\"", "fatal");
+        assertError(200, -32603, "Internal error", json);
+        assertFalse(json.messages().get(0).toString().contains("secret"));
+
+        String body = "{\"jsonrpc\":\"2.0\",\"id\":9,\"method\":\"tools/call\",\"params\":{"
+                + "\"name\":\"fatal\",\"_meta\":{\"progressToken\":\"p\","
+                + "\"io.modelcontextprotocol/protocolVersion\":\"2026-07-28\","
+                + "\"io.modelcontextprotocol/clientCapabilities\":{}}}}";
+        Exchange stream = post(body, RequestValidatorTest.headers("2026-07-28", "tools/call", "fatal"));
+        assertTrue(stream.streamed());
+        JsonObject error = stream.messages().get(stream.messages().size() - 1).getJsonObject("error");
+        assertEquals(-32603, error.getInt("code"));
+        assertFalse(error.toString().contains("secret"));
+    }
+
+    @Test
+    void bodiesLargerThanTheLimitAreRejected() throws Exception {
+        McpTransport small = transport(new CremaSettings(List.of(), 0, 64), AccessPolicy.PERMIT_ALL);
+        McpServerModel server = small.server(TestApp.class).orElseThrow();
+        String body = RequestValidatorTest.body(1, "tools/list", "2026-07-28", "");
+        assertTrue(body.length() > 64);
+        Map<String, String> headers = RequestValidatorTest.headers("2026-07-28", "tools/list", null);
+        java.util.function.Function<String, List<String>> lookup = name -> headers.containsKey(name)
+                ? List.of(headers.get(name)) : List.of();
+        for (long length : new long[] {-1, body.length()}) {
+            McpTransport.Plan plan = small.plan(server, new java.io.ByteArrayInputStream(
+                    body.getBytes(StandardCharsets.UTF_8)), length, lookup, Caller.ANONYMOUS);
+            HttpReply reply = assertInstanceOf(McpTransport.Reply.class, plan).reply();
+            assertEquals(413, reply.status());
+            JsonObject message = (JsonObject) Json.parse(reply.body());
+            assertFalse(message.containsKey("id"));
+            assertEquals(-32600, message.getJsonObject("error").getInt("code"));
+        }
+        java.io.InputStream unread = new java.io.InputStream() {
+            @Override
+            public int read() {
+                throw new AssertionError("the body must not be read");
+            }
+        };
+        assertEquals(413, assertInstanceOf(McpTransport.Reply.class, small.plan(server, unread, 65, lookup,
+                Caller.ANONYMOUS)).reply().status());
+
+        McpTransport.Plan fits = TRANSPORT.plan(SERVER, new java.io.ByteArrayInputStream(
+                body.getBytes(StandardCharsets.UTF_8)), -1, lookup, Caller.ANONYMOUS);
+        assertInstanceOf(McpTransport.Respond.class, fits);
+    }
+
+    @Test
     void notificationsGet202WithoutBody() {
         Exchange exchange = post("{\"jsonrpc\":\"2.0\",\"method\":\"notifications/initialized\"}", Map.of());
         assertEquals(202, exchange.status());
