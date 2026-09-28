@@ -41,7 +41,9 @@ import io.github.jungm.crema.internal.schema.SampleModel.WithDefaultMethod;
 import io.github.jungm.crema.internal.schema.SampleModel.Wrapper;
 import jakarta.json.Json;
 import jakarta.json.JsonObject;
+import jakarta.json.JsonStructure;
 import jakarta.json.JsonValue;
+import jakarta.json.bind.annotation.JsonbNillable;
 import jakarta.json.bind.annotation.JsonbTransient;
 import jakarta.json.bind.annotation.JsonbTypeSerializer;
 import jakarta.json.bind.serializer.JsonbSerializer;
@@ -243,7 +245,7 @@ class SchemaGeneratorTest {
         assertScalar("{'type':'array','items':{'type':'integer','minimum':-128,'maximum':127}}", byte[].class);
         assertScalar("{}", Object.class);
         assertScalar("{}", Thread.class);
-        assertScalar("{'type':['object','array']}", jakarta.json.JsonStructure.class);
+        assertScalar("{'type':['object','array']}", JsonStructure.class);
     }
 
     @Test
@@ -261,7 +263,7 @@ class SchemaGeneratorTest {
                 + "'required':['status']}", generator.schemaFor(NillableRefs.class));
     }
 
-    @jakarta.json.bind.annotation.JsonbNillable
+    @JsonbNillable
     public static class NillableRefs {
         public Address address;
         public Status status;
@@ -276,7 +278,7 @@ class SchemaGeneratorTest {
                 generator.schemaFor(NillableTwice.class));
     }
 
-    @jakarta.json.bind.annotation.JsonbNillable
+    @JsonbNillable
     public static class NillableTwice {
         public Address a;
         public Address b;

@@ -36,7 +36,7 @@ class SettingsTest {
 
     @Test
     void configOverridesAnnotation() {
-        ConfigLookup config = ConfigLookup.of(Map.of(
+        ConfigLookup config = MapConfig.of(Map.of(
                 "crema.default-server.title", "Configured",
                 "crema.default-server.version", "2.0",
                 "crema.default-server.website-url", "https://configured.example.com",
@@ -52,7 +52,7 @@ class SettingsTest {
 
     @Test
     void namedServersUseTheirOwnKeys() {
-        ConfigLookup config = ConfigLookup.of(Map.of("crema.servers.admin.description", "Configured",
+        ConfigLookup config = MapConfig.of(Map.of("crema.servers.admin.description", "Configured",
                 "crema.default-server.description", "Wrong"));
         ServerSettings settings = ServerSettings.resolve(AdminServer.class.getAnnotation(McpServerInfo.class),
                 config, Optional::empty);
@@ -74,20 +74,20 @@ class SettingsTest {
     @Test
     void blankConfigValuesAreUnset() {
         ServerSettings settings = ServerSettings.resolve(DefaultServer.class.getAnnotation(McpServerInfo.class),
-                ConfigLookup.of(Map.of("crema.default-server.title", " ")), Optional::empty);
+                MapConfig.of(Map.of("crema.default-server.title", " ")), Optional::empty);
         assertEquals("Annotated", settings.title());
     }
 
     @Test
     void globalSettings() {
         assertEquals(CremaSettings.defaults(), CremaSettings.resolve(ConfigLookup.none()));
-        CremaSettings settings = CremaSettings.resolve(ConfigLookup.of(Map.of(
+        CremaSettings settings = CremaSettings.resolve(MapConfig.of(Map.of(
                 "crema.origin.allowed", " https://a.example.com, https://b.example.com ,",
                 "crema.cache.list-ttl-ms", "0")));
         assertEquals(List.of("https://a.example.com", "https://b.example.com"), settings.allowedOrigins());
         assertEquals(0, settings.listTtlMs());
         assertEquals(4194304, settings.maxRequestBytes());
-        assertEquals(1024, CremaSettings.resolve(ConfigLookup.of(Map.of("crema.max-request-bytes", " 1024")))
+        assertEquals(1024, CremaSettings.resolve(MapConfig.of(Map.of("crema.max-request-bytes", " 1024")))
                 .maxRequestBytes());
     }
 
@@ -95,7 +95,7 @@ class SettingsTest {
     void invalidMaxRequestBytesFails() {
         for (String value : List.of("0", "-1", "lots")) {
             IllegalArgumentException e = assertThrows(IllegalArgumentException.class,
-                    () -> CremaSettings.resolve(ConfigLookup.of(Map.of("crema.max-request-bytes", value))));
+                    () -> CremaSettings.resolve(MapConfig.of(Map.of("crema.max-request-bytes", value))));
             assertTrue(e.getMessage().contains("crema.max-request-bytes"), e.getMessage());
         }
     }
@@ -104,7 +104,7 @@ class SettingsTest {
     void invalidListTtlFails() {
         for (String value : List.of("-1", "soon", "1.5")) {
             IllegalArgumentException e = assertThrows(IllegalArgumentException.class,
-                    () -> CremaSettings.resolve(ConfigLookup.of(Map.of("crema.cache.list-ttl-ms", value))));
+                    () -> CremaSettings.resolve(MapConfig.of(Map.of("crema.cache.list-ttl-ms", value))));
             assertTrue(e.getMessage().contains("crema.cache.list-ttl-ms"), e.getMessage());
         }
     }

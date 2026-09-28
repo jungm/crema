@@ -27,8 +27,6 @@ public final class ContentEncoders {
     private record Resolved(Class<?> type, InstanceSource instances) {
     }
 
-    public static final ContentEncoders NONE = new ContentEncoders(List::of);
-
     private final Supplier<List<Candidate>> candidates;
     private volatile List<Resolved> resolved;
 

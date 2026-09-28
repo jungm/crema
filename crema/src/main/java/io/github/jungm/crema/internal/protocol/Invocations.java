@@ -18,6 +18,7 @@ import io.github.jungm.crema.internal.bind.BindingException;
 import io.github.jungm.crema.internal.invoke.CompletionContextImpl;
 import io.github.jungm.crema.internal.invoke.Invocation;
 import io.github.jungm.crema.internal.invoke.ReturnConversion;
+import io.github.jungm.crema.internal.json.Json;
 import io.github.jungm.crema.internal.json.ProtocolJson;
 import io.github.jungm.crema.internal.model.Feature;
 import io.github.jungm.crema.internal.model.Param;
@@ -42,15 +43,15 @@ final class Invocations {
      * The Feature Method a request invokes, if the request names one that exists.
      */
     static Optional<Feature> target(Call call) {
-        switch (call.request().method()) {
-            case "tools/call":
-                return Json.string(call.params(), "name").flatMap(call.server()::tool).map(Feature.class::cast);
-            case "resources/read":
-                return Json.string(call.params(), "uri")
-                        .flatMap(uri -> resource(call, uri)).map(Target::feature);
-            case "prompts/get":
-                return Json.string(call.params(), "name")
-                        .flatMap(call.server()::prompt).map(Feature.class::cast);
+        String method = call.request().method();
+        Optional<String> name = Mcp.nameParam(method).flatMap(param -> Json.string(call.params(), param));
+        switch (method) {
+            case Mcp.TOOLS_CALL:
+                return name.flatMap(call.server()::tool).map(Feature.class::cast);
+            case Mcp.RESOURCES_READ:
+                return name.flatMap(uri -> resource(call, uri)).map(Target::feature);
+            case Mcp.PROMPTS_GET:
+                return name.flatMap(call.server()::prompt).map(Feature.class::cast);
             default:
                 return Optional.empty();
         }

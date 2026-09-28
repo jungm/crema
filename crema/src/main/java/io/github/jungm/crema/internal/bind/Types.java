@@ -196,6 +196,38 @@ public final class Types {
     }
 
     /**
+     * Returns the empty value of an {@code Optional*} type ({@code Optional.empty()}, {@code OptionalInt.empty()},
+     * ...), or {@code null} for any other type.
+     */
+    public static Object emptyOptional(Type type) {
+        Class<?> raw = rawType(type);
+        if (raw == Optional.class) {
+            return Optional.empty();
+        }
+        if (raw == OptionalInt.class) {
+            return OptionalInt.empty();
+        }
+        if (raw == OptionalLong.class) {
+            return OptionalLong.empty();
+        }
+        if (raw == OptionalDouble.class) {
+            return OptionalDouble.empty();
+        }
+        return null;
+    }
+
+    /**
+     * Returns whether a class belongs to the Java platform or Jakarta EE ({@code java.*}, {@code javax.*},
+     * {@code jakarta.*}, {@code jdk.*}, {@code sun.*}, {@code com.sun.*}). JSON-B maps only some of these, all of
+     * them explicitly; the rest are never application classes that JSON-B maps as JSON objects.
+     */
+    public static boolean isPlatformClass(Class<?> raw) {
+        String name = raw.getName();
+        return name.startsWith("java.") || name.startsWith("javax.") || name.startsWith("jakarta.")
+                || name.startsWith("jdk.") || name.startsWith("sun.") || name.startsWith("com.sun.");
+    }
+
+    /**
      * Returns the type an {@code Optional*} type wraps ({@code int} for {@code OptionalInt}, {@code T} for
      * {@code Optional<T>}), or {@code null} if the type is not an {@code Optional*} type.
      */

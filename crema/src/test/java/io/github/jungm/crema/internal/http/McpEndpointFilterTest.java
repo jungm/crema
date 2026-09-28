@@ -10,7 +10,7 @@ import java.util.List;
 
 import org.junit.jupiter.api.Test;
 
-import io.github.jungm.crema.internal.protocol.Json;
+import io.github.jungm.crema.internal.json.Json;
 import jakarta.json.JsonObject;
 import jakarta.ws.rs.core.PathSegment;
 import jakarta.ws.rs.core.UriInfo;

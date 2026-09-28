@@ -4,11 +4,8 @@ import java.io.StringReader;
 import java.lang.reflect.Type;
 import java.math.BigDecimal;
 import java.math.BigInteger;
-import java.util.Optional;
-import java.util.OptionalDouble;
-import java.util.OptionalInt;
-import java.util.OptionalLong;
 
+import io.github.jungm.crema.internal.json.Json;
 import jakarta.json.JsonNumber;
 import jakarta.json.JsonString;
 import jakarta.json.JsonValue;
@@ -18,7 +15,6 @@ import jakarta.json.bind.JsonbConfig;
 import jakarta.json.bind.JsonbException;
 import jakarta.json.bind.serializer.JsonbSerializer;
 import jakarta.json.bind.serializer.SerializationContext;
-import jakarta.json.spi.JsonProvider;
 import jakarta.json.stream.JsonGenerator;
 import jakarta.json.stream.JsonParser;
 
@@ -28,15 +24,13 @@ import jakarta.json.stream.JsonParser;
  * <p>
  * Values whose JSON-B mapping is fixed by the specification (strings, booleans, boxed numbers,
  * {@code BigDecimal}/{@code BigInteger}, JSON-P values) are converted directly; everything else goes through
- * {@link Jsonb}. Thread-safe.
+ * {@link Jsonb}. Thread-safe. The owner closes it when the application stops.
  */
 public final class JsonbBridge implements AutoCloseable {
 
-    private final JsonProvider jsonProvider;
     private final Jsonb jsonb;
 
     public JsonbBridge() {
-        this.jsonProvider = JsonProvider.provider();
         this.jsonb = JsonbBuilder.create(new JsonbConfig()
                 .withSerializers(new BigDecimalSerializer(), new BigIntegerSerializer())
                 .setProperty(JOHNZON_BIG_DECIMAL_AS_STRING, false)
@@ -73,13 +67,6 @@ public final class JsonbBridge implements AutoCloseable {
     }
 
     /**
-     * Returns the JSON-P provider this bridge creates values with.
-     */
-    public JsonProvider jsonProvider() {
-        return jsonProvider;
-    }
-
-    /**
      * Serializes a value with JSON-B, using its runtime type. {@code null} becomes {@link JsonValue#NULL}.
      *
      * @throws JsonbException if the value can't be serialized
@@ -87,16 +74,6 @@ public final class JsonbBridge implements AutoCloseable {
     public JsonValue toJsonValue(Object value) {
         JsonValue direct = directJsonValue(value);
         return direct != null ? direct : parse(jsonb.toJson(value));
-    }
-
-    /**
-     * Serializes a value with JSON-B, using {@code type} as its declared type.
-     *
-     * @throws JsonbException if the value can't be serialized
-     */
-    public JsonValue toJsonValue(Object value, Type type) {
-        JsonValue direct = directJsonValue(value);
-        return direct != null ? direct : parse(jsonb.toJson(value, type));
     }
 
     /**
@@ -139,19 +116,7 @@ public final class JsonbBridge implements AutoCloseable {
         if (raw.isPrimitive()) {
             throw new JsonbException("Cannot deserialize null into " + raw.getName());
         }
-        if (raw == Optional.class) {
-            return Optional.empty();
-        }
-        if (raw == OptionalInt.class) {
-            return OptionalInt.empty();
-        }
-        if (raw == OptionalLong.class) {
-            return OptionalLong.empty();
-        }
-        if (raw == OptionalDouble.class) {
-            return OptionalDouble.empty();
-        }
-        return raw == JsonValue.class ? JsonValue.NULL : null;
+        return raw == JsonValue.class ? JsonValue.NULL : Types.emptyOptional(raw);
     }
 
     private JsonValue directJsonValue(Object value) {
@@ -163,22 +128,22 @@ public final class JsonbBridge implements AutoCloseable {
         }
         Class<?> type = value.getClass();
         if (type == String.class) {
-            return jsonProvider.createValue((String) value);
+            return Json.PROVIDER.createValue((String) value);
         }
         if (type == Boolean.class) {
             return (Boolean) value ? JsonValue.TRUE : JsonValue.FALSE;
         }
         if (type == Integer.class || type == Short.class || type == Byte.class) {
-            return jsonProvider.createValue(((Number) value).intValue());
+            return Json.PROVIDER.createValue(((Number) value).intValue());
         }
         if (type == Long.class) {
-            return jsonProvider.createValue((long) value);
+            return Json.PROVIDER.createValue((long) value);
         }
         if (type == BigDecimal.class) {
-            return jsonProvider.createValue((BigDecimal) value);
+            return Json.PROVIDER.createValue((BigDecimal) value);
         }
         if (type == BigInteger.class) {
-            return jsonProvider.createValue((BigInteger) value);
+            return Json.PROVIDER.createValue((BigInteger) value);
         }
         if (type == Double.class || type == Float.class) {
             double number = ((Number) value).doubleValue();
@@ -186,10 +151,10 @@ public final class JsonbBridge implements AutoCloseable {
                 throw new JsonbException("Cannot serialize " + value + ": JSON numbers can't be NaN or infinite");
             }
             // JSON-B mandates the toString() representation, which differs from a widened float's.
-            return jsonProvider.createValue(new BigDecimal(value.toString()));
+            return Json.PROVIDER.createValue(new BigDecimal(value.toString()));
         }
         if (type == Character.class) {
-            return jsonProvider.createValue(value.toString());
+            return Json.PROVIDER.createValue(value.toString());
         }
         return null;
     }
@@ -234,14 +199,24 @@ public final class JsonbBridge implements AutoCloseable {
     }
 
     private JsonValue parse(String json) {
-        try (JsonParser parser = jsonProvider.createParser(new StringReader(json))) {
+        try (JsonParser parser = Json.PROVIDER.createParser(new StringReader(json))) {
             parser.next();
             return parser.getValue();
         }
     }
 
+    /**
+     * Releases the resources of the {@link Jsonb} instance, such as its caches of application classes. The
+     * bridge isn't usable afterwards.
+     *
+     * @throws JsonbException if closing fails
+     */
     @Override
-    public void close() throws Exception {
-        jsonb.close();
+    public void close() {
+        try {
+            jsonb.close();
+        } catch (Exception e) {
+            throw new JsonbException("Closing Jsonb failed", e);
+        }
     }
 }

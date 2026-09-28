@@ -1,6 +1,5 @@
 package io.github.jungm.crema.internal.invoke;
 
-import java.math.BigDecimal;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -10,7 +9,8 @@ import org.mcpjava.server.ImplementationInfo;
 import org.mcpjava.server.McpRequest;
 
 import io.github.jungm.crema.internal.json.ProtocolJson;
-import io.github.jungm.crema.internal.protocol.Json;
+import io.github.jungm.crema.internal.json.Json;
+import io.github.jungm.crema.internal.protocol.Mcp;
 import jakarta.json.JsonNumber;
 import jakarta.json.JsonObject;
 import jakarta.json.JsonString;
@@ -22,12 +22,6 @@ import jakarta.json.JsonValue;
  */
 public final class McpRequestImpl implements McpRequest {
 
-    public static final String PROTOCOL_VERSION = "io.modelcontextprotocol/protocolVersion";
-    public static final String CLIENT_CAPABILITIES = "io.modelcontextprotocol/clientCapabilities";
-    public static final String CLIENT_INFO = "io.modelcontextprotocol/clientInfo";
-    public static final String PROGRESS_TOKEN = "progressToken";
-    private static final String RESERVED_PREFIX = "io.modelcontextprotocol/";
-
     private final JsonValue id;
     private final JsonObject meta;
 
@@ -36,20 +30,13 @@ public final class McpRequestImpl implements McpRequest {
         this.meta = meta;
     }
 
+    /**
+     * The JSON-RPC id: a {@code String}, a {@code Long}, or a {@code BigDecimal} for numbers that aren't
+     * {@code long} integers.
+     */
     @Override
     public Object id() {
-        if (id instanceof JsonString string) {
-            return string.getString();
-        }
-        if (id instanceof JsonNumber number) {
-            BigDecimal value = number.bigDecimalValue();
-            try {
-                return value.longValueExact();
-            } catch (ArithmeticException e) {
-                return value;
-            }
-        }
-        return null;
+        return id instanceof JsonString || id instanceof JsonNumber ? Json.toJava(id) : null;
     }
 
     @Override
@@ -59,18 +46,18 @@ public final class McpRequestImpl implements McpRequest {
 
     @Override
     public String protocolVersion() {
-        return Json.string(meta, PROTOCOL_VERSION).orElse("");
+        return Json.string(meta, Mcp.META_PROTOCOL_VERSION).orElse("");
     }
 
     @Override
     public Map<String, Object> rawClientCapabilities() {
-        return Json.object(meta, CLIENT_CAPABILITIES).map(Json::toJavaMap).map(Collections::unmodifiableMap)
+        return Json.object(meta, Mcp.META_CLIENT_CAPABILITIES).map(Json::toJavaMap).map(Collections::unmodifiableMap)
                 .orElse(Map.of());
     }
 
     @Override
     public ImplementationInfo clientInfo() {
-        return ProtocolJson.implementation(Json.object(meta, CLIENT_INFO).orElse(null));
+        return ProtocolJson.implementation(Json.object(meta, Mcp.META_CLIENT_INFO).orElse(null));
     }
 
     /**
@@ -82,7 +69,7 @@ public final class McpRequestImpl implements McpRequest {
         Map<String, Object> metadata = new LinkedHashMap<>();
         if (meta != null) {
             meta.forEach((key, value) -> {
-                if (!key.startsWith(RESERVED_PREFIX) && !key.equals(PROGRESS_TOKEN)) {
+                if (!key.startsWith(Mcp.META_PREFIX) && !key.equals(Mcp.PROGRESS_TOKEN)) {
                     metadata.put(key, Json.toJava(value));
                 }
             });

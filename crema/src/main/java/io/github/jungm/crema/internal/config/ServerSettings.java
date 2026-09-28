@@ -16,7 +16,7 @@ import io.github.jungm.crema.McpServerInfo;
 public record ServerSettings(String name, String title, String version, String description, String instructions,
         String websiteUrl, String resource) {
 
-    public static final String FALLBACK_VERSION = "0.0.0";
+    private static final String FALLBACK_VERSION = "0.0.0";
 
     /**
      * Resolves the settings of the MCP Server that {@code info} declares ({@code null} for the default MCP

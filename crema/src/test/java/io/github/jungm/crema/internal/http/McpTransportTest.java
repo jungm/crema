@@ -28,7 +28,7 @@ import io.github.jungm.crema.internal.model.Scanning;
 import io.github.jungm.crema.internal.model.McpServerModel;
 import io.github.jungm.crema.internal.model.ServerRegistry;
 import io.github.jungm.crema.internal.protocol.Dispatcher;
-import io.github.jungm.crema.internal.protocol.Json;
+import io.github.jungm.crema.internal.json.Json;
 import io.github.jungm.crema.internal.protocol.Services;
 import io.github.jungm.crema.internal.security.AccessPolicy;
 import io.github.jungm.crema.internal.security.Caller;
@@ -374,7 +374,7 @@ class McpTransportTest {
         assertEquals("2.0", body.getString("jsonrpc"));
         assertTrue(body.containsKey("error"));
 
-        McpTransport anyOrigin = transport(new CremaSettings(List.of("*"), 0), AccessPolicy.PERMIT_ALL);
+        McpTransport anyOrigin = transport(new CremaSettings(List.of("*"), 0, CremaSettings.defaults().maxRequestBytes()), AccessPolicy.PERMIT_ALL);
         assertEquals(new McpTransport.Admitted(Caller.ANONYMOUS),
                 anyOrigin.screen(SERVER, "http://evil.example.com", Caller.ANONYMOUS));
     }
@@ -442,7 +442,7 @@ class McpTransportTest {
                 List.of())), scanner.features(), settings);
         assertEquals(List.of(), result.problems());
         return new McpTransport(result.registry(),
-                new Dispatcher(new Services(MAPPING, ContentEncoders.NONE, access)));
+                new Dispatcher(new Services(MAPPING, new ContentEncoders(List::of), access)));
     }
 
     private static Exchange call(String method, String params, String name) {

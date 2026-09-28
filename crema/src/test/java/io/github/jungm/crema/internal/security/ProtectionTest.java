@@ -14,6 +14,7 @@ import org.junit.jupiter.api.Test;
 
 import io.github.jungm.crema.McpServerInfo;
 import io.github.jungm.crema.internal.config.ConfigLookup;
+import io.github.jungm.crema.internal.config.MapConfig;
 import io.github.jungm.crema.internal.config.ServerSettings;
 import jakarta.annotation.security.DenyAll;
 import jakarta.annotation.security.PermitAll;
@@ -67,7 +68,7 @@ class ProtectionTest {
     }
 
     private static ConfigLookup bareMicroProfile(Map<String, String> values) {
-        ConfigLookup map = ConfigLookup.of(values);
+        ConfigLookup map = MapConfig.of(values);
         return new ConfigLookup() {
             @Override
             public Optional<String> get(String key) {
@@ -153,7 +154,7 @@ class ProtectionTest {
     @Test
     void protectedServerNeedsMicroProfileConfig() {
         assertEquals(Optional.empty(), resolve(Protected.class,
-                ConfigLookup.of(Map.of("crema.default-server.issuer", "https://as.example.com"))));
+                MapConfig.of(Map.of("crema.default-server.issuer", "https://as.example.com"))));
         assertEquals(1, problems.size());
         assertTrue(problems.get(0).contains("MicroProfile Config isn't available"), problems.get(0));
         assertTrue(problems.get(0).contains(Protected.class.getName()), problems.get(0));

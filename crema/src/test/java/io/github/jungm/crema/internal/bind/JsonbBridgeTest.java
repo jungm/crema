@@ -17,6 +17,8 @@ import java.util.Optional;
 import java.util.OptionalInt;
 
 import jakarta.json.Json;
+import jakarta.json.JsonArray;
+import jakarta.json.JsonObject;
 import jakarta.json.JsonValue;
 import jakarta.json.bind.Jsonb;
 import jakarta.json.bind.JsonbBuilder;
@@ -97,13 +99,6 @@ class JsonbBridgeTest {
     }
 
     @Test
-    void toJsonValueWithDeclaredType() {
-        Type type = new TypeLiteral<List<Optional<String>>>() { }.type();
-        assertEquals(Json.createArrayBuilder().add("a").addNull().build(),
-                bridge.toJsonValue(java.util.Arrays.asList(Optional.of("a"), Optional.empty()), type));
-    }
-
-    @Test
     void fromJsonValue() {
         assertEquals("a", bridge.fromJsonValue(Json.createValue("a"), String.class));
         assertEquals(5, bridge.fromJsonValue(Json.createValue(5), int.class));
@@ -138,8 +133,8 @@ class JsonbBridgeTest {
     void fromJsonValueToJsonValueTypes() {
         JsonValue array = Json.createArrayBuilder().add(1).build();
         assertSame(array, bridge.fromJsonValue(array, JsonValue.class));
-        assertSame(array, bridge.fromJsonValue(array, jakarta.json.JsonArray.class));
-        assertThrows(JsonbException.class, () -> bridge.fromJsonValue(array, jakarta.json.JsonObject.class));
+        assertSame(array, bridge.fromJsonValue(array, JsonArray.class));
+        assertThrows(JsonbException.class, () -> bridge.fromJsonValue(array, JsonObject.class));
     }
 
     @Test

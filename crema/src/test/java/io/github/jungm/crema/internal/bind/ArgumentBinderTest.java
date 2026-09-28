@@ -2,7 +2,6 @@ package io.github.jungm.crema.internal.bind;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
@@ -288,17 +287,6 @@ class ArgumentBinderTest {
     }
 
     @Test
-    void optionalTypes() {
-        assertTrue(binder.isOptionalType(new TypeLiteral<Optional<String>>() { }.type()));
-        assertTrue(binder.isOptionalType(Optional.class));
-        assertTrue(binder.isOptionalType(OptionalInt.class));
-        assertTrue(binder.isOptionalType(OptionalLong.class));
-        assertTrue(binder.isOptionalType(OptionalDouble.class));
-        assertFalse(binder.isOptionalType(String.class));
-        assertFalse(binder.isOptionalType(int.class));
-    }
-
-    @Test
     void longStringsAreTruncatedInMessages() {
         String longString = "x".repeat(100);
         BindingException e = assertThrows(BindingException.class, () -> bind("\"" + longString + "\"", int.class));
@@ -306,11 +294,10 @@ class ArgumentBinderTest {
     }
 
     @Test
-    void pathsAreExposed() {
+    void messagesStartWithThePath() {
         BindingException e = assertThrows(BindingException.class,
                 () -> bind("[{\"a\":[1,\"x\"]}]", new TypeLiteral<List<Map<String, List<Integer>>>>() { }.type()));
-        assertEquals("[0].a[1]", e.path());
-        assertEquals("expected an integer but got \"x\"", e.detail());
+        assertEquals("[0].a[1]: expected an integer but got \"x\"", e.getMessage());
     }
 
     private Object bind(String json, Type type) {

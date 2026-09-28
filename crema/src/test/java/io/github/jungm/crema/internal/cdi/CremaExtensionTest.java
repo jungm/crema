@@ -33,7 +33,7 @@ import io.github.jungm.crema.internal.config.ServerSettings;
 import io.github.jungm.crema.internal.http.HttpReply;
 import io.github.jungm.crema.internal.http.McpTransport;
 import io.github.jungm.crema.internal.model.McpServerModel;
-import io.github.jungm.crema.internal.protocol.Json;
+import io.github.jungm.crema.internal.json.Json;
 import io.github.jungm.crema.internal.security.Caller;
 import jakarta.annotation.PreDestroy;
 import jakarta.enterprise.context.ApplicationScoped;
