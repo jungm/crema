@@ -11,7 +11,7 @@ import org.mcpjava.server.progress.Progress;
 
 import io.github.jungm.crema.internal.bind.ArgumentBinder;
 import io.github.jungm.crema.internal.bind.BindingException;
-import io.github.jungm.crema.internal.model.FeatureMethod;
+import io.github.jungm.crema.internal.model.ApplicationMethod;
 import io.github.jungm.crema.internal.model.Parameter;
 import io.github.jungm.crema.internal.security.Caller;
 import jakarta.json.JsonObject;
@@ -44,7 +44,7 @@ public final class Invocation {
      * @throws BindingException if an Argument is missing or can't be bound, before the method is invoked
      * @throws Exception whatever the method throws
      */
-    public Object invoke(FeatureMethod method, Function<Parameter.Argument, Object> arguments) throws Exception {
+    public Object invoke(ApplicationMethod method, Function<Parameter.Argument, Object> arguments) throws Exception {
         List<Parameter> parameters = method.parameters();
         Object[] values = new Object[parameters.size()];
         for (int i = 0; i < values.length; i++) {

@@ -13,10 +13,9 @@ import java.util.concurrent.ExecutionException;
 import java.util.stream.Collectors;
 
 /**
- * An application method that implements a Feature or a completion, with its parameters and the MCP Servers it
- * is bound to.
+ * A Feature Method or Completion Method, with its parameters and the MCP Servers it is bound to.
  */
-public final class FeatureMethod {
+public final class ApplicationMethod {
 
     private final Class<?> beanClass;
     private final Method method;
@@ -24,7 +23,7 @@ public final class FeatureMethod {
     private final Set<String> servers;
     private final InstanceSource instances;
 
-    public FeatureMethod(Class<?> beanClass, Method method, List<Parameter> parameters, Set<String> servers,
+    public ApplicationMethod(Class<?> beanClass, Method method, List<Parameter> parameters, Set<String> servers,
             InstanceSource instances) {
         this.beanClass = beanClass;
         this.method = method;

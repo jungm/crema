@@ -200,7 +200,7 @@ class RolesTest {
         RequestCaller runtimeAdmin = new RequestCaller(() -> "bob", Set.of("user", "admin"));
         assertEquals(401, fixture.callTool(fixture.protectedServer, runtimeAdmin, "users").status());
         assertEquals(false, fixture.policy.permits(fixture.protectedServer,
-                fixture.protectedServer.tool("everyone").orElseThrow(), runtimeAdmin));
+                fixture.protectedServer.tool("everyone").orElseThrow().method(), runtimeAdmin));
     }
 
     @Test

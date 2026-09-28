@@ -23,8 +23,7 @@ import com.nimbusds.jose.proc.BadJOSEException;
 import com.nimbusds.jwt.JWTClaimsSet;
 
 import io.github.jungm.crema.internal.json.Json;
-import io.github.jungm.crema.internal.model.Feature;
-import io.github.jungm.crema.internal.model.FeatureMethod;
+import io.github.jungm.crema.internal.model.ApplicationMethod;
 import io.github.jungm.crema.internal.model.McpServerModel;
 import io.github.jungm.crema.internal.protocol.Rejection;
 import jakarta.json.JsonObject;
@@ -62,7 +61,7 @@ public final class CremaAccessPolicy implements Closeable {
      *        token's fault, such as unavailable keys
      */
     private record McpServerAccess(Protection protection, TokenValidator validator,
-            Map<FeatureMethod, AccessRule> rules, boolean isPrivate, LogText.Throttle failures) {
+            Map<ApplicationMethod, AccessRule> rules, boolean isPrivate, LogText.Throttle failures) {
     }
 
     /**
@@ -91,12 +90,12 @@ public final class CremaAccessPolicy implements Closeable {
         Set<String> problems = new LinkedHashSet<>();
         for (McpServerModel server : servers) {
             Optional<AccessRule> application = AccessRule.ofApplication(server.application(), new ArrayList<>());
-            Map<FeatureMethod, AccessRule> rules = new IdentityHashMap<>();
+            Map<ApplicationMethod, AccessRule> rules = new IdentityHashMap<>();
             List<String> found = new ArrayList<>();
             boolean restricted = false;
-            for (Feature feature : server.features()) {
-                AccessRule rule = AccessRule.of(feature.method().method(), application, found);
-                rules.put(feature.method(), rule);
+            for (ApplicationMethod method : server.applicationMethods()) {
+                AccessRule rule = AccessRule.of(method.method(), application, found);
+                rules.put(method, rule);
                 restricted |= rule.restricts();
             }
             problems.addAll(found);
@@ -144,18 +143,18 @@ public final class CremaAccessPolicy implements Closeable {
     }
 
     /**
-     * Whether the caller may use a Feature or Completion Method. Features that aren't permitted are omitted from
-     * lists.
+     * Whether the caller may use a Feature Method or Completion Method. Features whose Feature Method isn't
+     * permitted are omitted from lists.
      *
      * @param caller a caller {@link #authenticate admitted} for this MCP Server
      */
-    public boolean permits(McpServerModel server, Feature feature, Caller caller) {
+    public boolean permits(McpServerModel server, ApplicationMethod method, Caller caller) {
         McpServerAccess access = access(server);
         if (access.protection() != null
                 && !(caller instanceof TokenCaller tokenCaller && tokenCaller.isFor(server.application()))) {
             return false;
         }
-        return access.rules().get(feature.method()).permits(caller);
+        return access.rules().get(method).permits(caller);
     }
 
     /**

@@ -92,7 +92,7 @@ public final class TestDeployment {
      */
     public McpServerRegistry.Result build() {
         assertEquals(List.of(), scanner.problems(), "problems scanning the beans");
-        return McpServerRegistry.build(declarations, scanner.features(), settings);
+        return McpServerRegistry.build(declarations, scanner.features(), scanner.completions(), settings);
     }
 
     /**

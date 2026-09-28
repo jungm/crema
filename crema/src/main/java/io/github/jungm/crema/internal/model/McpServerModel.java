@@ -16,7 +16,7 @@ import org.mcpjava.server.ImplementationInfo;
 
 
 /**
- * One MCP Server: its description and its Features. Listed Features are sorted by name.
+ * One MCP Server: its description, its Features and its Completion Methods. Listed Features are sorted by name.
  */
 public final class McpServerModel {
 
@@ -29,15 +29,16 @@ public final class McpServerModel {
     private final Map<String, Feature.Resource> resourcesByUri;
     private final Map<String, Feature.ResourceTemplate> templates;
     private final Map<String, Feature.Prompt> prompts;
-    private final Map<String, Feature.Completion> completions;
+    private final Map<String, Completion> completions;
 
     /**
      * @param info the {@code serverInfo}, whose name is the MCP Server's name as sent to MCP Clients
      * @param instructions the instructions sent in {@code server/discover}, or {@code null}
-     * @param features the Features and completions bound to this MCP Server; names and URIs must be unique
+     * @param features the Features bound to this MCP Server; names and URIs must be unique
+     * @param completions the Completion Methods bound to this MCP Server; at most one per Argument
      */
     public McpServerModel(Class<?> application, ImplementationInfo info, String instructions, long listTtlMs,
-            Collection<? extends Feature> features) {
+            Collection<? extends Feature> features, Collection<Completion> completions) {
         this.application = application;
         this.info = info;
         this.instructions = instructions;
@@ -47,8 +48,10 @@ public final class McpServerModel {
         this.resourcesByUri = index(features, Feature.Resource.class, Feature.Resource::uri);
         this.templates = index(features, Feature.ResourceTemplate.class, Feature::name);
         this.prompts = index(features, Feature.Prompt.class, Feature::name);
-        this.completions = index(features, Feature.Completion.class,
-                c -> completionKey(c.kind(), c.target(), c.argument()));
+        this.completions = Collections.unmodifiableMap(completions.stream()
+                .sorted(Comparator.comparing(Completion::describe))
+                .collect(Collectors.toMap(c -> completionKey(c.kind(), c.target(), c.argument()), c -> c,
+                        (a, b) -> a, TreeMap::new)));
     }
 
     /**
@@ -111,16 +114,17 @@ public final class McpServerModel {
         return Optional.ofNullable(prompts.get(name));
     }
 
-    public Optional<Feature.Completion> completion(FeatureType kind, String target, String argument) {
+    public Optional<Completion> completion(FeatureType kind, String target, String argument) {
         return Optional.ofNullable(completions.get(completionKey(kind, target, argument)));
     }
 
     /**
-     * All Features and completions.
+     * The Feature Methods of all Features, then the Completion Methods.
      */
-    public List<Feature> features() {
-        return Stream.of(tools.values(), resources.values(), templates.values(), prompts.values(),
-                completions.values()).flatMap(Collection::stream).map(Feature.class::cast).toList();
+    public List<ApplicationMethod> applicationMethods() {
+        return Stream.concat(Stream.of(tools.values(), resources.values(), templates.values(), prompts.values())
+                .flatMap(Collection::stream).map(Feature::method), completions.values().stream()
+                .map(Completion::method)).toList();
     }
 
     private static String completionKey(FeatureType kind, String target, String argument) {

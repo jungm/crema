@@ -18,6 +18,8 @@ import io.github.jungm.crema.internal.invoke.Invocation;
 import io.github.jungm.crema.internal.invoke.ReturnConversion;
 import io.github.jungm.crema.internal.json.Json;
 import io.github.jungm.crema.internal.json.ProtocolJson;
+import io.github.jungm.crema.internal.model.ApplicationMethod;
+import io.github.jungm.crema.internal.model.Completion;
 import io.github.jungm.crema.internal.model.Feature;
 import io.github.jungm.crema.internal.model.Parameter;
 import jakarta.json.JsonObject;
@@ -56,7 +58,7 @@ final class Invocations {
         String name = call.requireString("name");
         Feature.Tool tool = call.server().tool(name)
                 .orElseThrow(() -> McpError.invalidParams("Unknown tool: " + name));
-        checkAccess(call, tool);
+        checkAccess(call, tool.method());
         JsonObject arguments = call.optionalObject("arguments").orElse(null);
         var mapping = call.services().mapping();
         ToolResponse response;
@@ -79,19 +81,19 @@ final class Invocations {
     static JsonObject readResource(Call call) {
         String uri = call.requireString("uri");
         Target target = resource(call, uri).orElseThrow(() -> notFound(uri));
-        checkAccess(call, target.feature());
+        ApplicationMethod method = target.feature().method();
+        checkAccess(call, method);
         var mapping = call.services().mapping();
-        Object value = invoke(call, target.feature(), Invocation.fromStrings(target.variables(), mapping.binder()),
-                null);
+        Object value = invoke(call, method, Invocation.fromStrings(target.variables(), mapping.binder()), null);
         if (value == null) {
             throw notFound(uri);
         }
         ResourceResponse response;
         try {
-            response = ReturnConversion.resource(value, target.feature().method().valueType(), uri,
+            response = ReturnConversion.resource(value, method.valueType(), uri,
                     target.mimeType(), mapping.jsonb());
         } catch (RuntimeException e) {
-            throw internal(target.feature(), e);
+            throw internal(method, e);
         }
         if (response.getContents() == null || response.getContents().isEmpty()) {
             // the spec forbids empty contents; a resource without any is one that doesn't exist
@@ -107,12 +109,12 @@ final class Invocations {
         String name = call.requireString("name");
         Feature.Prompt prompt = call.server().prompt(name)
                 .orElseThrow(() -> McpError.invalidParams("Unknown prompt: " + name));
-        checkAccess(call, prompt);
+        checkAccess(call, prompt.method());
         Map<String, String> arguments = strings(call.optionalObject("arguments"), "Prompt arguments");
         var mapping = call.services().mapping();
         Object value;
         try {
-            value = invoke(call, prompt, Invocation.fromStrings(arguments, mapping.binder()), null);
+            value = invoke(call, prompt.method(), Invocation.fromStrings(arguments, mapping.binder()), null);
         } catch (BindingException e) {
             throw McpError.invalidParams("Invalid arguments for prompt " + name + ": " + e.getMessage());
         }
@@ -120,7 +122,7 @@ final class Invocations {
         try {
             response = ReturnConversion.prompt(value);
         } catch (RuntimeException e) {
-            throw internal(prompt, e);
+            throw internal(prompt.method(), e);
         }
         return ProtocolJson.promptResult(response, mapping.jsonb()::toJsonValue);
     }
@@ -141,7 +143,7 @@ final class Invocations {
                 })), "context.arguments");
         String type = requireString(ref, "ref.type");
         Feature target;
-        Optional<Feature.Completion> completion;
+        Optional<Completion> completion;
         if (type.equals("ref/prompt")) {
             String name = requireString(ref, "ref.name");
             target = call.server().prompt(name).orElseThrow(() -> McpError.invalidParams("Unknown prompt: " + name));
@@ -162,21 +164,22 @@ final class Invocations {
         } else {
             throw McpError.invalidParams("Unknown reference type: " + type);
         }
-        checkAccess(call, target);
+        checkAccess(call, target.method());
         CompletionResult result = CompletionResult.builder().setHasMore(false).build();
         if (completion.isPresent()) {
-            checkAccess(call, completion.get());
+            checkAccess(call, completion.get().method());
             Object value;
             try {
-                value = invoke(call, completion.get(), Invocation.fromStrings(Map.of(argumentName, argumentValue),
-                        call.services().mapping().binder()), new CompletionContextImpl(context));
+                value = invoke(call, completion.get().method(),
+                        Invocation.fromStrings(Map.of(argumentName, argumentValue), call.services().mapping().binder()),
+                        new CompletionContextImpl(context));
             } catch (BindingException e) {
                 throw McpError.invalidParams(e.getMessage());
             }
             try {
                 result = ReturnConversion.completion(value);
             } catch (RuntimeException e) {
-                throw internal(completion.get(), e);
+                throw internal(completion.get().method(), e);
             }
         }
         JsonObjectBuilder json = Json.object()
@@ -191,26 +194,26 @@ final class Invocations {
      * @throws BindingException if an Argument is missing or can't be bound
      * @throws McpError {@code -32603} if the method fails
      */
-    private static Object invoke(Call call, Feature feature, Function<Parameter.Argument, Object> arguments,
+    private static Object invoke(Call call, ApplicationMethod method, Function<Parameter.Argument, Object> arguments,
             CompletionContextImpl context) {
         try {
-            return call.invocation(context).invoke(feature.method(), arguments);
+            return call.invocation(context).invoke(method, arguments);
         } catch (BindingException e) {
             throw e;
         } catch (McpException e) {
             throw McpError.internal(e.getMessage() != null ? e.getMessage() : "Internal error");
         } catch (Throwable e) {
-            throw internal(feature, e);
+            throw internal(method, e);
         }
     }
 
-    private static McpError internal(Feature feature, Throwable e) {
-        return Dispatcher.internalError(String.valueOf(feature.method()), e);
+    private static McpError internal(ApplicationMethod method, Throwable e) {
+        return Dispatcher.internalError(String.valueOf(method), e);
     }
 
-    private static void checkAccess(Call call, Feature feature) {
+    private static void checkAccess(Call call, ApplicationMethod method) {
         var access = call.services().access();
-        if (!access.permits(call.server(), feature, call.caller())) {
+        if (!access.permits(call.server(), method, call.caller())) {
             throw access.forbidden(call.server());
         }
     }

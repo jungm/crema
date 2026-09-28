@@ -17,6 +17,7 @@ import io.github.jungm.crema.internal.config.McpServerSettings;
 import io.github.jungm.crema.internal.http.McpTransport;
 import io.github.jungm.crema.internal.invoke.ContentEncoders;
 import io.github.jungm.crema.internal.invoke.Mapping;
+import io.github.jungm.crema.internal.model.Completion;
 import io.github.jungm.crema.internal.model.Feature;
 import io.github.jungm.crema.internal.model.IconLookup;
 import io.github.jungm.crema.internal.model.McpServerRegistry;
@@ -57,9 +58,14 @@ public final class CremaDeployment {
     }
 
     /**
-     * The Features the CDI extension found, and what handling requests needs.
+     * The Features and Completion Methods the CDI extension found, and what handling requests needs.
      */
-    public record Catalog(List<Feature> features, Mapping mapping, ContentEncoders encoders, IconLookup icons) {
+    public record Catalog(List<Feature> features, List<Completion> completions, Mapping mapping,
+            ContentEncoders encoders, IconLookup icons) {
+
+        boolean isEmpty() {
+            return features.isEmpty() && completions.isEmpty();
+        }
     }
 
     /**
@@ -87,11 +93,11 @@ public final class CremaDeployment {
 
     /**
      * Called by the CDI extension after deployment validation. A second call means that another web application
-     * shares Crema's classes; it is a problem if that application has Features.
+     * shares Crema's classes; it is a problem if that application has Features or Completion Methods.
      */
     public static synchronized void featuresDiscovered(Catalog discovered, Consumer<String> problems) {
         if (catalog != null) {
-            if (!discovered.features().isEmpty()) {
+            if (!discovered.isEmpty()) {
                 problems.accept(SHARED);
             }
             return;
@@ -213,7 +219,7 @@ public final class CremaDeployment {
             }
             resolved.add(new McpServerRegistry.Declaration(declaration.application(), declaration.settings(), icons));
         }
-        McpServerRegistry.Result result = McpServerRegistry.build(resolved, catalog.features(),
+        McpServerRegistry.Result result = McpServerRegistry.build(resolved, catalog.features(), catalog.completions(),
                 declarations.settings());
         problems.addAll(result.problems());
         result.warnings().forEach(LOG::warning);
