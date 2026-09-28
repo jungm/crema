@@ -39,18 +39,19 @@ public final class ServerRegistry {
 
     /**
      * The registry and the deployment problems found while building it. The registry is only usable if there are
-     * no problems.
+     * no problems. Warnings name questionable but valid declarations.
      */
-    public record Result(ServerRegistry registry, List<String> problems) {
+    public record Result(ServerRegistry registry, List<String> problems, List<String> warnings) {
     }
 
     /**
      * Assigns Features to the MCP Servers they are bound to, and checks what can only be checked per MCP Server:
      * unique MCP Server names, bindings to declared MCP Servers, unique Feature names and resource URIs, and
-     * completion references.
+     * completion references. Resource Templates of the same shape in one MCP Server are warnings.
      */
     public static Result build(List<Declaration> declarations, List<Feature> features, CremaSettings settings) {
         List<String> problems = new ArrayList<>();
+        List<String> warnings = new ArrayList<>();
         Map<String, Declaration> byName = new LinkedHashMap<>();
         for (Declaration declaration : declarations) {
             Declaration previous = byName.putIfAbsent(declaration.settings().name(), declaration);
@@ -80,13 +81,14 @@ public final class ServerRegistry {
             String name = declaration.settings().name();
             List<Feature> bound = featuresByServer.getOrDefault(name, List.of());
             checkServer(name, bound, problems);
+            checkTemplateShapes(name, bound, warnings);
             ServerSettings s = declaration.settings();
             servers.put(declaration.application(), new McpServerModel(declaration.application(), s,
                     ImplementationInfoImpl.of(s.wireName(), s.title(), s.version(), s.description(), s.websiteUrl(),
                             declaration.icons()),
                     settings.listTtlMs(), bound));
         }
-        return new Result(new ServerRegistry(servers, settings), List.copyOf(problems));
+        return new Result(new ServerRegistry(servers, settings), List.copyOf(problems), List.copyOf(warnings));
     }
 
     /**
@@ -123,6 +125,25 @@ public final class ServerRegistry {
         for (Feature feature : features) {
             if (feature instanceof Feature.Completion completion) {
                 checkCompletion(completion, features, in, problems);
+            }
+        }
+    }
+
+    /**
+     * Two templates of the same shape, such as {@code db:///{table}} and {@code db:///{name}}, match the same URIs,
+     * so only one of them is ever invoked.
+     */
+    private static void checkTemplateShapes(String server, List<Feature> features, List<String> warnings) {
+        Map<String, Feature.ResourceTemplate> seen = new HashMap<>();
+        for (Feature feature : features) {
+            if (feature instanceof Feature.ResourceTemplate template) {
+                Feature.ResourceTemplate previous = seen.putIfAbsent(template.uriTemplate().shape(), template);
+                if (previous != null) {
+                    warnings.add(where(template) + ": the URI template '" + template.uriTemplate()
+                            + "' matches the same URIs as '" + previous.uriTemplate() + "' of "
+                            + previous.method().describe() + " in MCP Server '" + display(server)
+                            + "', so only the Resource Template whose name sorts first is used");
+                }
             }
         }
     }

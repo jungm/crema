@@ -35,6 +35,24 @@ class CremaInitializerTest {
     abstract static class Base extends McpApplication {
     }
 
+    static class Chatty extends McpApplication {
+        static String greeting() {
+            return "hi";
+        }
+
+        void helper() {
+        }
+    }
+
+    @Test
+    void subclassesMustNotDeclareMethods() {
+        List<String> problems = new ArrayList<>();
+        CremaInitializer.checkOverrides(Chatty.class, problems);
+        assertEquals(List.of("McpApplication " + Chatty.class.getName() + ": " + Chatty.class.getName()
+                + " declares the methods [greeting(), helper()], but McpApplication subclasses must not declare "
+                + "methods"), problems);
+    }
+
     @Test
     void subclassesMustNotChooseTheirJaxRsClasses() {
         List<String> problems = new ArrayList<>();

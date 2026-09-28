@@ -17,9 +17,9 @@ import jakarta.ws.rs.core.Application;
  * public class OrderMcp extends McpApplication {}
  * </pre>
  * <p>
- * Only Crema's own resources and providers serve MCP traffic. Subclasses must not override {@link #getClasses()},
- * {@link #getSingletons()} or {@link #getProperties()}; deployment fails if they do. Features are exposed only
- * through an {@code McpApplication}.
+ * Only Crema's own resources and providers serve MCP traffic. Subclasses must not declare any methods, in particular
+ * not override {@link #getClasses()}, {@link #getSingletons()} or {@link #getProperties()}; deployment fails if they
+ * do. Features are exposed only through an {@code McpApplication}.
  * <p>
  * Crema enforces {@code @RolesAllowed}, {@code @PermitAll} and {@code @DenyAll} on Feature and Completion Methods:
  * the annotation on the method wins over the one on its declaring class, which wins over the one on the

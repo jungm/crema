@@ -60,7 +60,8 @@ public final class ReturnConversion {
     /**
      * {@code String} becomes text contents, {@code byte[]} blob contents, {@code ResourceContents}, a {@code List}
      * of them and {@code ResourceResponse} are used as is, and any other value is serialized with JSON-B into text
-     * contents of type {@code application/json}. Generated contents carry the requested {@code uri}.
+     * contents of the declared MIME type, else {@code application/json}. Generated contents carry the requested
+     * {@code uri}. An empty {@code List} becomes a response without contents.
      *
      * @param mimeType the declared MIME type, or {@code null}
      */
@@ -71,8 +72,7 @@ public final class ReturnConversion {
         ResourceResponse.Builder response = ResourceResponse.builder();
         if (value instanceof ResourceContents contents) {
             response.addContents(contents);
-        } else if (value instanceof List<?> list && !list.isEmpty()
-                && list.stream().allMatch(ResourceContents.class::isInstance)) {
+        } else if (value instanceof List<?> list && list.stream().allMatch(ResourceContents.class::isInstance)) {
             list.forEach(item -> response.addContents((ResourceContents) item));
         } else if (value instanceof String text) {
             TextResourceContents.Builder contents = TextResourceContents.builder(uri, text);
@@ -87,7 +87,8 @@ public final class ReturnConversion {
             }
             response.addContents(contents.build());
         } else {
-            response.addContents(TextResourceContents.builder(uri, jsonb.toJson(value)).setMimeType(JSON).build());
+            response.addContents(TextResourceContents.builder(uri, jsonb.toJson(value))
+                    .setMimeType(mimeType != null ? mimeType : JSON).build());
         }
         return response.build();
     }

@@ -42,7 +42,7 @@ public class OrderMcp extends McpApplication {}
 public class AdminMcp extends McpApplication {}
 ```
 
-- `McpApplication` is an abstract `jakarta.ws.rs.core.Application` whose `getClasses()`/`getSingletons()`/`getProperties()` are `final` and register only Crema's own JAX-RS resources and providers. The application's other providers never apply to MCP traffic.
+- `McpApplication` is an abstract `jakarta.ws.rs.core.Application` whose `getClasses()`/`getSingletons()`/`getProperties()` register only Crema's own JAX-RS resources and providers. They aren't `final`, because Liberty proxies `Application` subclasses as normal-scoped CDI beans. A subclass that overrides any of them, or declares any methods at all (on TomEE that switches off provider scanning for the whole WAR), fails deployment. The application's other providers never apply to MCP traffic.
 - Each concrete `McpApplication` subclass declares exactly one MCP Server. Declaring at least one is mandatory for Features to be exposed.
 - `@McpServerInfo` attributes: `name` (default `McpServer.DEFAULT`), `title`, `version`, `description`, `instructions`, `websiteUrl`. Empty string means unset. If `version` is unset, fall back to `Implementation-Version` from the WAR's `META-INF/MANIFEST.MF` (via `ServletContext`), else `"0.0.0"`.
 - A Crema resource class that is picked up by an application's own scanning `Application` must not serve MCP there. It answers `404` unless the owning `Application` is an `McpApplication`.
@@ -52,7 +52,7 @@ public class AdminMcp extends McpApplication {}
 
 - Annotations hold code-level facts. **MicroProfile Config is the only configuration source**, and it is optional. Nothing is read from `web.xml`.
 - Keys: `crema.default-server.<attr>` for the default MCP Server and `crema.servers.<name>.<attr>` for named ones. `<attr>` ∈ `title`, `version`, `description`, `instructions`, `website-url`, `resource`. Config values override annotation values.
-- Global keys: `crema.origin.allowed` (comma-separated origins, `*` disables the check), `crema.cache.list-ttl-ms`.
+- Global keys: `crema.origin.allowed` (comma-separated origins, `*` disables the check; it doesn't enable CORS, and Crema answers no preflights), `crema.cache.list-ttl-ms`, `crema.max-request-bytes` (default `4194304`; a larger body, by `Content-Length` or while reading, gets `413` with a JSON-RPC `-32600` error that has no `id`).
 - If MP Config is absent, annotation values and defaults apply. If an MCP Server is protected (see §7) and MP Config is absent, deployment fails with a clear message.
 
 ## 5. Features and programming model
@@ -63,15 +63,15 @@ public class AdminMcp extends McpApplication {}
 - Injected Parameters: `McpRequest`, `Progress`, `Cancellation` (never reports cancellation), and `CompletionContext` (completion only). All other parameters are Arguments.
 - Argument binding: each Argument's JSON value is deserialized with JSON-B into the parameter's generic type. `defaultValue` strings are parsed as JSON literals, falling back to a JSON string for `String`/enum/`char` parameters. `Optional`, `OptionalInt`, `OptionalLong` and `OptionalDouble` parameters are never required. `required=false` with no default binds `null`, or an empty `Optional*` for those types.
 - Return conversion (per the API javadoc of each annotation):
-  - Tools: `String` → `TextContent`; `ContentBlock` → as-is; `List` of `ContentBlock`/`String` → multiple items; `ToolResponse` → as-is; `void` → empty content; `CompletionStage<T>` → awaited, then converted. Any other type: first try a `ContentEncoder` (CDI beans, most specific type match wins), else JSON-B → one `TextContent`. With `@Tool(structuredContent = true)` the JSON value also goes into `structuredContent`, and `outputSchema` is generated from the return type or `outputSchemaFrom`.
-  - Resources and templates: `String` → text contents; `byte[]` → blob (Base64); `ResourceContents`/`List<ResourceContents>`/`ResourceResponse` → as-is; other types → JSON-B text with mime type `application/json`. The `uri` of generated contents is the requested URI.
+  - Tools: `String` → `TextContent`; `ContentBlock` → as-is; `List` of `ContentBlock`/`String` → multiple items; `ToolResponse` → as-is; `void` → empty content; `CompletionStage<T>` → awaited, then converted. Any other type: first try a `ContentEncoder` (CDI beans, most specific type match wins), else JSON-B → one `TextContent`. With `@Tool(structuredContent = true)` the JSON value also goes into `structuredContent`, and `outputSchema` is generated from the return type or `outputSchemaFrom`. In 2026-07-28 both may be any JSON value or schema (SEP-2106), so non-object types such as `List<T>` are allowed.
+  - Resources and templates: `String` → text contents; `byte[]` → blob (Base64); `ResourceContents`/`List<ResourceContents>`/`ResourceResponse` → as-is; other types → JSON-B text with the declared `mimeType`, else `application/json`. The `uri` of generated contents is the requested URI.
   - Prompts: `String` → one `USER` text message; `PromptMessage`/`List<PromptMessage>`/`PromptResponse` → as-is. Any other return type **fails deployment**.
   - Completions: `String`/`List<String>`/`CompletionResult`. Any other return type fails deployment. Values are capped at 100 per the spec, with `hasMore` set accordingly.
 - JSON Schema (draft 2020-12) for Tool `inputSchema`/`outputSchema` is generated by Crema's own generator. It follows JSON-B mapping rules: `@JsonbProperty` names, `@JsonbTransient`, `@JsonbNillable`, records, getters/public fields, enums (`enum`), collections/arrays (`array` + `items`), `Map<String,V>` (`additionalProperties`), `Optional*`, `java.time` types (`string` + `format`), `BigDecimal`/`BigInteger`, `UUID`, `URI`. Recursive types go through `$defs`/`$ref`. Descriptions come from `@ToolArg(description)`. `required` lists the required Arguments.
 - `@MetaField` values go into the definition's `_meta` (with `type` conversion: STRING/INT/BOOLEAN/JSON). `@Icons` providers are CDI beans, or instantiated reflectively when not a bean. `@Tool.Annotations` and `@Resource.Annotations` are emitted only when declared explicitly on the method (not their defaults).
-- `ResourceTemplate` matching uses RFC 6570 Level 1 (`{var}`, values without `/`). Each variable binds to the `String` parameter with that name.
+- `ResourceTemplate` matching uses RFC 6570 Level 1 (`{var}`). Each variable binds to the `String` parameter with that name. Values are percent-decoded, and a match is rejected (→ not found) if a decoded value is empty, contains `/` or `\`, or is `.` or `..`. Applications can therefore use a value as a single path segment safely. Two templates that can match the same URI are reported at deployment only if they have identical shape (a warning).
 - `McpRequest`: `id()` = the JSON-RPC id; `sessionId()` is always empty; `protocolVersion()` comes from `_meta`; `rawClientCapabilities()` comes from `_meta`; `clientInfo()` comes from `_meta`, or is an `ImplementationInfo` with empty name/title/version when absent; `metadata()` is the request's `_meta` minus the `io.modelcontextprotocol/` keys.
-- `Progress`: `token()` comes from `_meta.progressToken`. `ProgressNotification.send()` returns a `CompletableFuture<Void>`. Progress notifications are written to the SSE response stream of the current request. Without a token, `send` is a no-op that completes immediately.
+- `Progress`: `token()` comes from `_meta.progressToken`. `ProgressNotification.send()` returns a `CompletableFuture<Void>`. Progress notifications are written to the SSE response stream of the current request. As the API javadoc specifies, `notificationBuilder()`/`trackerBuilder()` throw `IllegalStateException` when the request has no progress token; application code checks `token().isPresent()` first.
 
 ## 6. Deployment-time validation
 
@@ -83,7 +83,8 @@ Each of these fails deployment (a CDI `addDeploymentProblem`) with the offending
 - a resource template whose variables don't match its `String` parameters;
 - a `@CompletePrompt`/`@CompleteResourceTemplate` referencing an unknown Prompt/Resource Template or Argument, or not having exactly one `String` Argument;
 - an unsupported return type for Prompts or Completions;
-- an invalid `@MetaField` prefix or name (per the rules in its javadoc).
+- an invalid `@MetaField` prefix or name (per the rules in its javadoc), or two `@MetaField`s with the same key on one method;
+- Crema's classes being shared by more than one web application (Crema must be in each WAR's `WEB-INF/lib`), or an `McpApplication` present while CDI is inactive for the WAR.
 
 ## 7. Security
 

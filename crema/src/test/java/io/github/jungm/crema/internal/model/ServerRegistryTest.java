@@ -103,10 +103,23 @@ class ServerRegistryTest {
         }
     }
 
+    public static class C {
+        @ResourceTemplate(uriTemplate = "x://{key}")
+        public String sameShape(String key) {
+            return null;
+        }
+
+        @ResourceTemplate(uriTemplate = "x://{key}/more")
+        public String otherShape(String key) {
+            return null;
+        }
+    }
+
     @Test
     void validRegistry() {
         ServerRegistry.Result result = build(List.of(declaration(DefaultApp.class)), A.class);
         assertEquals(List.of(), result.problems());
+        assertEquals(List.of(), result.warnings());
         McpServerModel server = result.registry().server(DefaultApp.class).orElseThrow();
         assertEquals("default", server.info().name());
         assertEquals("0.0.0", server.info().version());
@@ -139,6 +152,16 @@ class ServerRegistryTest {
     }
 
     @Test
+    void templatesOfTheSameShapeAreWarnings() {
+        ServerRegistry.Result result = build(List.of(declaration(DefaultApp.class)), A.class, C.class);
+        assertEquals(List.of(), result.problems());
+        assertEquals(1, result.warnings().size(), result.warnings().toString());
+        String warning = result.warnings().get(0);
+        assertTrue(warning.contains("'x://{key}' matches the same URIs as 'x://{id}'")
+                || warning.contains("'x://{id}' matches the same URIs as 'x://{key}'"), warning);
+    }
+
+    @Test
     void featuresNeedAnMcpApplication() {
         List<String> problems = build(List.of(), A.class).problems();
         assertProblem(problems, "@Tool method " + A.class.getName() + "#tool(): is bound to the MCP Server "
@@ -162,7 +185,7 @@ class ServerRegistryTest {
     private static ServerRegistry.Result build(List<ServerRegistry.Declaration> declarations, Class<?>... beans) {
         FeatureScanner scanner = new FeatureScanner(MAPPING, IconLookup.reflective());
         for (Class<?> bean : beans) {
-            scanner.scan(bean, InstanceSource.of(null));
+            Scanning.scan(scanner, bean, null);
         }
         assertEquals(List.of(), scanner.problems());
         return ServerRegistry.build(new ArrayList<>(declarations), scanner.features(), CremaSettings.defaults());

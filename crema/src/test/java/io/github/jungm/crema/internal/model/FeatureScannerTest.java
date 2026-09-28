@@ -168,7 +168,7 @@ class FeatureScannerTest {
             public void tool() {
             }
         }
-        FeatureScanner scanner = scan(Bound.class).scan(Unbound.class, InstanceSource.of(null));
+        FeatureScanner scanner = Scanning.scan(scan(Bound.class), Unbound.class, null);
         Map<String, java.util.Set<String>> servers = new java.util.HashMap<>();
         scanner.features().forEach(f -> servers.put(f.name(), f.method().servers()));
         assertEquals(java.util.Set.of("a", "b"), servers.get("both"));
@@ -235,22 +235,12 @@ class FeatureScannerTest {
         }
 
         @Tool(structuredContent = true)
-        public String structuredString() {
-            return null;
-        }
-
-        @Tool(structuredContent = true)
         public ToolResponse structuredResponse() {
             return null;
         }
 
         @Tool(structuredContent = true)
         public void structuredVoid() {
-        }
-
-        @Tool(structuredContent = true)
-        public Optional<Weather> structuredOptional() {
-            return null;
         }
 
         @Tool
@@ -308,6 +298,12 @@ class FeatureScannerTest {
         public String invalidPriority() {
             return null;
         }
+
+        @Tool
+        @MetaField(prefix = "com.example/", name = "x", value = "1")
+        @MetaField(prefix = "com.example/", name = "x", value = "2")
+        public void duplicateMetaField() {
+        }
     }
 
     @Test
@@ -331,10 +327,8 @@ class FeatureScannerTest {
                 "Completion Methods must return String, List<String> or CompletionResult, not int");
         assertProblem(problems, prefix + "twoArguments(String, String)", "exactly one String Argument");
         assertProblem(problems, prefix + "nonStringArgument(int)", "exactly one String Argument");
-        assertProblem(problems, prefix + "structuredString()", "always writes as a JSON object");
         assertProblem(problems, prefix + "structuredResponse()", "set outputSchemaFrom");
         assertProblem(problems, prefix + "structuredVoid()", "requires a return type or outputSchemaFrom");
-        assertProblem(problems, prefix + "structuredOptional()", "always writes as a JSON object");
         assertProblem(problems, prefix + "completionContext(CompletionContext)",
                 "CompletionContext is only available to Completion Methods");
         assertProblem(problems, prefix + "primitiveOptional(int)", "needs a defaultValue or a wrapper type");
@@ -348,6 +342,43 @@ class FeatureScannerTest {
         assertProblem(problems, prefix + "invalidBoolean()", "neither 'true' nor 'false'");
         assertProblem(problems, prefix + "invalidJson()", "isn't valid JSON");
         assertProblem(problems, prefix + "invalidPriority()", "between 0.0 and 1.0");
+        assertProblem(problems, prefix + "duplicateMetaField()",
+                "more than one @MetaField has the key 'com.example/x'");
+    }
+
+    public static class AnyStructuredContent {
+        @Tool(structuredContent = true)
+        public String string() {
+            return null;
+        }
+
+        @Tool(structuredContent = true)
+        public List<Weather> list() {
+            return null;
+        }
+
+        @Tool(structuredContent = true)
+        public Optional<Weather> optional() {
+            return null;
+        }
+
+        @Tool(structuredContent = true, outputSchemaFrom = int[].class)
+        public ToolResponse numbers() {
+            return null;
+        }
+    }
+
+    @Test
+    void structuredContentMayBeAnyJsonValue() {
+        FeatureScanner scanner = scan(AnyStructuredContent.class);
+        assertEquals(List.of(), scanner.problems());
+        Map<String, JsonObject> schemas = new java.util.HashMap<>();
+        scanner.features().forEach(f -> schemas.put(f.name(), ((Feature.Tool) f).definition().getJsonObject("outputSchema")));
+        assertEquals(Json.parse("{\"type\":\"string\"}"), schemas.get("string"));
+        assertEquals("array", schemas.get("list").getString("type"));
+        assertEquals("array", schemas.get("numbers").getString("type"));
+        assertTrue(schemas.get("optional").containsKey("anyOf") || schemas.get("optional").containsKey("type"),
+                schemas.get("optional")::toString);
     }
 
     @Test
@@ -384,7 +415,7 @@ class FeatureScannerTest {
     }
 
     private static FeatureScanner scan(Class<?> type) {
-        return new FeatureScanner(MAPPING, IconLookup.reflective()).scan(type, InstanceSource.of(null));
+        return Scanning.scan(new FeatureScanner(MAPPING, IconLookup.reflective()), type, null);
     }
 
     private static void assertProblem(List<String> problems, String method, String text) {

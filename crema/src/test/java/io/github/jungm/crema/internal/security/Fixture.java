@@ -31,7 +31,7 @@ import io.github.jungm.crema.internal.invoke.ContentEncoders;
 import io.github.jungm.crema.internal.invoke.Mapping;
 import io.github.jungm.crema.internal.model.FeatureScanner;
 import io.github.jungm.crema.internal.model.IconLookup;
-import io.github.jungm.crema.internal.model.InstanceSource;
+import io.github.jungm.crema.internal.model.Scanning;
 import io.github.jungm.crema.internal.model.McpServerModel;
 import io.github.jungm.crema.internal.model.ServerRegistry;
 import io.github.jungm.crema.internal.protocol.Dispatcher;
@@ -186,10 +186,10 @@ final class Fixture {
 
     Fixture(Protection defaultProtection, Protection otherProtection) {
         FeatureScanner scanner = new FeatureScanner(MAPPING, IconLookup.reflective());
-        scanner.scan(Features.class, InstanceSource.of(new Features()));
-        scanner.scan(AdminFeatures.class, InstanceSource.of(new AdminFeatures()));
-        scanner.scan(OtherFeatures.class, InstanceSource.of(new OtherFeatures()));
-        scanner.scan(OpenFeatures.class, InstanceSource.of(new OpenFeatures()));
+        Scanning.scan(scanner, Features.class, new Features());
+        Scanning.scan(scanner, AdminFeatures.class, new AdminFeatures());
+        Scanning.scan(scanner, OtherFeatures.class, new OtherFeatures());
+        Scanning.scan(scanner, OpenFeatures.class, new OpenFeatures());
         assertEquals(List.of(), scanner.problems());
         List<ServerRegistry.Declaration> declarations = new ArrayList<>();
         for (Class<?> app : List.of(ProtectedApp.class, OtherApp.class, OpenApp.class)) {
