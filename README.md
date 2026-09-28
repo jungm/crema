@@ -1,13 +1,15 @@
-<h1 align="center">
+<p>
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="docs/images/crema-logo-dark.svg">
-    <img src="docs/images/crema-logo.svg" alt="Crema" width="420">
+    <img src="docs/images/crema-logo.svg" alt="Crema" width="340" align="left">
   </picture>
-</h1>
+</p>
 
-<h3 align="center"><em>Where your enterprise beans meet AI.</em></h3>
+<h3><em>Where your enterprise beans meet AI.</em></h3>
 
-<p align="center">An MCP server implementation for Jakarta EE.</p>
+An MCP server implementation for Jakarta EE.
+
+<br clear="left">
 
 Crema turns methods of your CDI beans into [Model Context Protocol](https://modelcontextprotocol.io) Tools, Resources
 and Prompts that AI clients can discover and call. It is a plain library in your WAR, implements the
