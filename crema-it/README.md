@@ -39,7 +39,8 @@ mvn -B -pl crema-it -am verify -Pwebsphere-liberty -Dit.websphere-liberty.http.p
 ```
 
 WildFly's ports all follow `it.wildfly.port.offset` (http is 8080 plus the offset); `it.wildfly.management.port` must
-be 9990 plus the offset.
+be 9990 plus the offset. The Liberty adapter also refuses to start while any JVM on the machine runs a Liberty server
+of the same name, so concurrent Liberty builds need distinct `-Dit.liberty.server=<name>` (default `crema-it`).
 
 Each test records its observations as `FINDING` lines on stdout and in `target/findings/<runtime>-<test>.txt`.
 

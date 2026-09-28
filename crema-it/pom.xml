@@ -41,6 +41,8 @@
         <skipITs>true</skipITs>
         <it.runtime>none</it.runtime>
         <liberty.dir>${project.build.directory}/liberty</liberty.dir>
+        <!-- The Liberty adapter refuses to start while any JVM runs a Liberty server of the same name. -->
+        <it.liberty.server>crema-it</it.liberty.server>
     </properties>
 
     <dependencyManagement>
@@ -118,6 +120,7 @@
                         <it.wildfly.port.offset>${it.wildfly.port.offset}</it.wildfly.port.offset>
                         <it.wildfly.management.port>${it.wildfly.management.port}</it.wildfly.management.port>
                         <it.liberty.home>${liberty.dir}/wlp</it.liberty.home>
+                        <it.liberty.server>${it.liberty.server}</it.liberty.server>
                     </systemPropertyVariables>
                 </configuration>
                 <executions>
@@ -250,7 +253,7 @@
                                     <goal>copy-resources</goal>
                                 </goals>
                                 <configuration>
-                                    <outputDirectory>${liberty.dir}/wlp/usr/servers/crema-it</outputDirectory>
+                                    <outputDirectory>${liberty.dir}/wlp/usr/servers/${it.liberty.server}</outputDirectory>
                                     <resources>
                                         <resource>
                                             <directory>src/test/liberty</directory>
@@ -330,7 +333,7 @@
                                     <goal>copy-resources</goal>
                                 </goals>
                                 <configuration>
-                                    <outputDirectory>${liberty.dir}/wlp/usr/servers/crema-it</outputDirectory>
+                                    <outputDirectory>${liberty.dir}/wlp/usr/servers/${it.liberty.server}</outputDirectory>
                                     <resources>
                                         <resource>
                                             <directory>src/test/liberty</directory>
