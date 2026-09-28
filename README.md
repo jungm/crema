@@ -341,7 +341,7 @@ named one (`crema.servers.admin.title`, ...).
 ### Origin check
 
 To stop DNS rebinding attacks, a request that carries an `Origin` header is refused with `403` unless that origin is a
-loopback origin (`localhost`, `127.0.0.1`, `[::1]`, any port) or is listed in `crema.origin.allowed`. Requests
+loopback origin (`localhost`, `127.0.0.0/8`, `[::1]`, any port) or is listed in `crema.origin.allowed`. Requests
 without `Origin` (typical for non-browser MCP Clients) pass. The check doesn't enable CORS: Crema answers no
 preflight requests.
 
