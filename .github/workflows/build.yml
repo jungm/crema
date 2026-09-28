@@ -1,0 +1,59 @@
+name: Build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  unit:
+    name: Unit tests (JDK ${{ matrix.java }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        java: [17, 21, 25]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: corretto
+          java-version: ${{ matrix.java }}
+          cache: maven
+      - run: mvn -B -ntp -pl crema verify
+      - name: Upload test reports
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: reports-unit-${{ matrix.java }}
+          path: crema/target/surefire-reports
+
+  integration:
+    name: IT (${{ matrix.runtime }}, JDK ${{ matrix.java }})
+    needs: unit
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        java: [17, 21, 25]
+        runtime: [tomee, openliberty, wildfly]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: corretto
+          java-version: ${{ matrix.java }}
+          cache: maven
+      # -Dtest='!*' skips the unit tests already run by the unit job; failsafe is unaffected.
+      - name: Run integration tests
+        run: >
+          mvn -B -ntp -pl crema-it -am verify -P${{ matrix.runtime }}
+          -Dtest='!*' -Dsurefire.failIfNoSpecifiedTests=false
+      - name: Upload test reports
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: reports-${{ matrix.runtime }}-${{ matrix.java }}
+          path: |
+            **/target/failsafe-reports
+            crema-it/target/**/logs
