@@ -30,6 +30,7 @@ import io.github.jungm.crema.internal.model.ServerRegistry;
 import io.github.jungm.crema.internal.security.AccessPolicy;
 import io.github.jungm.crema.internal.security.Caller;
 import jakarta.json.JsonObject;
+import jakarta.json.JsonValue;
 
 /**
  * How {@code tools/call}, {@code resources/read}, {@code prompts/get} and {@code completion/complete} turn what
@@ -55,6 +56,16 @@ class InvocationsTest {
         @Tool
         public String toolOutOfMemory() {
             throw new OutOfMemoryError("simulated");
+        }
+
+        @Tool
+        public String echo(String text) {
+            return "echo " + text;
+        }
+
+        @Tool
+        public String maybe(Optional<String> text, JsonValue json) {
+            return text.orElse("empty") + " " + json;
         }
 
         @Resource(uri = "test://error")
@@ -109,6 +120,23 @@ class InvocationsTest {
             assertEquals(-32602, error.getInt("code"), uri);
             assertEquals("Resource not found", error.getString("message"), uri);
         }
+    }
+
+    @Test
+    void nullForARequiredArgumentIsMissing() {
+        JsonObject result = result(handle("tools/call", Json.object().add("name", "echo")
+                .add("arguments", Json.object().addNull("text"))));
+        assertTrue(result.getBoolean("isError"));
+        assertEquals("Invalid arguments for tool echo: Missing required argument 'text'",
+                result.getJsonArray("content").getJsonObject(0).getString("text"));
+    }
+
+    @Test
+    void nullIsAValueOfOptionalAndJsonValue() {
+        JsonObject result = result(handle("tools/call", Json.object().add("name", "maybe")
+                .add("arguments", Json.object().addNull("text").addNull("json"))));
+        assertFalse(result.containsKey("isError") && result.getBoolean("isError"), result::toString);
+        assertEquals("empty null", result.getJsonArray("content").getJsonObject(0).getString("text"));
     }
 
     static McpServerModel server(Class<?> type, Object instance) {

@@ -67,7 +67,8 @@ public final class Invocation {
     }
 
     /**
-     * Arguments from a JSON object, bound to the parameter types.
+     * Arguments from a JSON object, bound to the parameter types. A JSON {@code null} for a required Argument
+     * counts as missing, unless {@code null} is a value of its type.
      *
      * @param json the {@code arguments} object, or {@code null} when the request has none
      */
@@ -76,6 +77,10 @@ public final class Invocation {
             JsonValue value = json == null ? null : json.get(argument.name());
             if (value == null) {
                 return absent(argument, binder);
+            }
+            if (value.getValueType() == JsonValue.ValueType.NULL && argument.required()
+                    && !binder.acceptsNull(argument.type())) {
+                throw missing(argument);
             }
             try {
                 return binder.bind(value, argument.type());
@@ -111,8 +116,12 @@ public final class Invocation {
             return binder.bindDefault(argument.defaultValue(), argument.type());
         }
         if (argument.required()) {
-            throw new BindingException("Missing required argument '" + argument.name() + "'");
+            throw missing(argument);
         }
         return binder.absent(argument.type());
+    }
+
+    private static BindingException missing(Param.Argument argument) {
+        return new BindingException("Missing required argument '" + argument.name() + "'");
     }
 }

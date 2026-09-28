@@ -191,6 +191,15 @@ public final class ArgumentBinder {
         return Types.isOptional(type);
     }
 
+    /**
+     * Returns whether JSON {@code null} is a value of {@code type} rather than the absence of one: for
+     * {@code Optional*} types (an empty optional), {@code Object} and {@code JsonValue}.
+     */
+    public boolean acceptsNull(Type type) {
+        Class<?> raw = Types.rawType(Types.resolve(type));
+        return Types.isOptional(raw) || raw == Object.class || raw == JsonValue.class;
+    }
+
     private Object bindOptional(JsonValue json, Type resolved, Class<?> raw) {
         boolean isNull = json.getValueType() == JsonValue.ValueType.NULL;
         if (raw == OptionalInt.class) {
