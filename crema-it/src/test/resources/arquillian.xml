@@ -41,15 +41,4 @@
             <property name="appDeployTimeout">20</property>
         </configuration>
     </container>
-
-    <container qualifier="websphere-liberty">
-        <configuration>
-            <property name="wlpHome">${it.liberty.home}</property>
-            <property name="serverName">${it.liberty.server}</property>
-            <property name="httpPort">${it.liberty.http.port}</property>
-            <property name="deployType">dropins</property>
-            <property name="serverStartTimeout">120</property>
-            <property name="appDeployTimeout">20</property>
-        </configuration>
-    </container>
 </arquillian>

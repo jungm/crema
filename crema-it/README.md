@@ -12,7 +12,6 @@ source ~/.sdkman/bin/sdkman-init.sh && sdk use java 21-amzn
 mvn -B -pl crema-it -am verify -Ptomee
 mvn -B -pl crema-it -am verify -Pwildfly
 mvn -B -pl crema-it -am verify -Popenliberty
-mvn -B -pl crema-it -am verify -Pwebsphere-liberty
 ```
 
 Without a profile the integration tests are skipped. Only one profile runs per build.
@@ -22,7 +21,6 @@ Without a profile the integration tests are skipped. Only one profile runs per b
 | `tomee`             | Apache TomEE 10.2.0, `microprofile` flavor | the adapter resolves `apache-tomee:zip:microprofile` via Maven into `target/tomee` | `org.apache.tomee:arquillian-tomee-remote` 10.2.0              | http 18080, shutdown 18005, no AJP      | ~30 s     |
 | `wildfly`           | WildFly 41.0.1.Final, `standalone-microprofile.xml` | `maven-dependency-plugin` unpacks `wildfly-dist` into `target/` | `org.wildfly.arquillian:wildfly-arquillian-container-managed` 5.1.0.Final | port offset 10100 (http 18180, management 20090) | ~30 s     |
 | `openliberty`       | Open Liberty 26.0.0.9 (`openliberty-runtime`) | `maven-dependency-plugin` unpacks into `target/liberty`, `src/test/liberty/server.xml` is copied (filtered) | `io.openliberty.arquillian:arquillian-liberty-managed-jakarta` 3.0.0 | http 18280, https 18643                 | ~2.5 min  |
-| `websphere-liberty` | WebSphere Liberty 26.0.0.4 (`wlp-jakartaee10`, latest on Maven Central) | same as `openliberty`                                       | same as `openliberty`                                           | http 18380, https 18743                 | ~2.5 min  |
 
 Times are for `mvn clean verify` with the Runtime already in the local Maven repository. Each adapter stops its
 server at the end of the run. Liberty uses `webProfile-10.0`, `mpConfig-3.1` and `localConnector-1.0`.
@@ -34,8 +32,6 @@ example by 2000:
 mvn -B -pl crema-it -am verify -Ptomee -Dit.tomee.http.port=20080 -Dit.tomee.stop.port=20005
 mvn -B -pl crema-it -am verify -Pwildfly -Dit.wildfly.port.offset=12100 -Dit.wildfly.management.port=22090
 mvn -B -pl crema-it -am verify -Popenliberty -Dit.openliberty.http.port=20280 -Dit.openliberty.https.port=20643
-mvn -B -pl crema-it -am verify -Pwebsphere-liberty -Dit.websphere-liberty.http.port=20380 \
-    -Dit.websphere-liberty.https.port=20743
 ```
 
 WildFly's ports all follow `it.wildfly.port.offset` (http is 8080 plus the offset); `it.wildfly.management.port` must
@@ -126,7 +122,7 @@ signers. The WAR needs nothing Runtime-specific, and no Runtime security configu
 
 ### Findings
 
-TomEE 10.2.0, WildFly 41.0.1, Open Liberty 26.0.0.9 and WebSphere Liberty 26.0.0.4 behave the same in every check:
+TomEE 10.2.0, WildFly 41.0.1 and Open Liberty 26.0.0.9 behave the same in every check:
 
 | # | Check | Result on every Runtime |
 |---|-------|-------------------------|
