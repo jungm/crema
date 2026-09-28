@@ -1,3 +1,7 @@
+---
+status: superseded by ADR 0002
+---
+
 # Runtime MP-JWT validates tokens; Crema enforces a per-MCP-Server audience
 
 Protected MCP Servers rely on the Runtime's MicroProfile JWT (`@LoginConfig(authMethod = "MP-JWT")` on the `McpApplication` subclass) for signature, expiry and issuer validation, and Crema additionally requires the MCP Server's Resource Identifier in the token's `aud`. Crema itself implements only the MCP-specific parts: the `401` challenge with `resource_metadata`, the Protected Resource Metadata document, role checks and hiding of Features.

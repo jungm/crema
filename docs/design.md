@@ -6,8 +6,8 @@ Crema is an MCP server implementation for Jakarta EE. It implements the `org.mcp
 
 - Coordinates: `io.github.jungm:crema` (library) and `io.github.jungm:crema-it` (integration tests, not deployed). Apache-2.0. Base package `io.github.jungm.crema`.
 - Bytecode: Java 17 (`maven.compiler.release=17`). The build and tests run on JDK 21.
-- Compile-scope APIs (all `provided`): Jakarta EE 10 Web Profile (`jakarta.platform:jakarta.jakartaee-web-api:10.0.0`), and **optional** `org.eclipse.microprofile.config:microprofile-config-api` and `org.eclipse.microprofile.jwt:microprofile-jwt-auth-api`. Crema must work when the MicroProfile classes are absent at runtime: guard every use behind a class-presence check and keep MicroProfile types out of classes that are loaded unconditionally.
-- Runtime dependency: `org.mcpjava:mcp-server-api:1.0.0` (compile scope, transitively shipped in `WEB-INF/lib`).
+- Compile-scope APIs (all `provided`): Jakarta EE 10 Web Profile (`jakarta.platform:jakarta.jakartaee-web-api:10.0.0`), and **optional** `org.eclipse.microprofile.config:microprofile-config-api`. Crema must work when MP Config is absent at runtime: guard every use behind a class-presence check and keep MicroProfile types out of classes that are loaded unconditionally.
+- Runtime dependencies (compile scope, shipped transitively in `WEB-INF/lib`): `org.mcpjava:mcp-server-api:1.0.0` and `com.nimbusds:nimbus-jose-jwt` (latest 10.x, not relocated).
 - No other runtime dependencies. No vendor-specific code.
 - Target Runtimes: Apache TomEE 10.x, Open Liberty, WebSphere Liberty, WildFly (all EE 10+).
 - Packaging: a plain JAR in the application's `WEB-INF/lib`, with `META-INF/beans.xml` (`bean-discovery-mode="annotated"`) and a CDI portable extension registered in `META-INF/services/jakarta.enterprise.inject.spi.Extension`. The SPI implementation is registered in `META-INF/services/org.mcpjava.server.spi.McpServerSPI`.
@@ -88,15 +88,26 @@ Each of these fails deployment (a CDI `addDeploymentProblem`) with the offending
 ## 7. Security
 
 - **Origin** (DNS rebinding): an absent `Origin` passes. A present `Origin` passes only if it is a loopback origin (`http`/`https` with host `localhost`, `127.0.0.1` or `[::1]`, any port) or is listed in `crema.origin.allowed` (`*` disables the check). Otherwise respond `403` with a JSON-RPC error that has no `id`. The request's `Host` header is never trusted for this, because in a rebinding attack `Host` and `Origin` both name the attacker's domain.
-- **Roles**: `@RolesAllowed`, `@PermitAll` and `@DenyAll` are enforced by Crema on Feature and Completion Methods, using `SecurityContext.isUserInRole`. Precedence: method > declaring class > `McpApplication` subclass. `"**"` means any authenticated caller. Features the caller may not use are **omitted** from lists. Invoking one yields `403` (with `WWW-Authenticate: Bearer error="insufficient_scope", resource_metadata="…"` when the MCP Server is protected).
-- **Protected MCP Server**: an MCP Server whose `McpApplication` subclass carries `@RolesAllowed` or `@DenyAll`. Tokens are validated by the Runtime's MicroProfile JWT (`@LoginConfig(authMethod = "MP-JWT")` on the subclass); see [ADR 0001](adr/0001-runtime-mp-jwt-with-per-server-audience.md). Crema:
-  - responds `401` with `WWW-Authenticate: Bearer resource_metadata="<MCP Endpoint>/.well-known/oauth-protected-resource"` when there is no authenticated caller;
-  - serves the Protected Resource Metadata (RFC 9728) unauthenticated at `<MCP Endpoint>/.well-known/oauth-protected-resource`: `resource` = the Resource Identifier, `authorization_servers` = [`mp.jwt.verify.issuer`], `bearer_methods_supported` = [`header`];
-  - requires the Resource Identifier in the token's `aud` (principal is `org.eclipse.microprofile.jwt.JsonWebToken`), else `401` with `error="invalid_token"`;
-  - Resource Identifier = `crema.default-server.resource`/`crema.servers.<name>.resource` (the MCP Endpoint's public URL, for use behind reverse proxies), else the MCP Endpoint URL derived from the request. RFC 9728 §3.3 requires it to equal the URL clients use, so it must never be anything else;
-  - fails deployment if `mp.jwt.verify.audiences` is set and doesn't contain a statically configured Resource Identifier;
-  - fails deployment if a protected MCP Server exists but MP Config or MP-JWT classes are unavailable.
-- Roles come from MP-JWT's `groups` claim. OAuth scopes aren't mapped, and challenges carry no `scope` parameter.
+- **Roles**: `@RolesAllowed`, `@PermitAll` and `@DenyAll` are enforced by Crema on Feature and Completion Methods. Precedence: method > declaring class > `McpApplication` subclass. `"**"` means any authenticated caller. Features the caller may not use are **omitted** from lists. Invoking one yields `403`, with `WWW-Authenticate: Bearer error="insufficient_scope", resource_metadata="…"` when the MCP Server is protected. For open MCP Servers, the caller and roles are the container's (`HttpServletRequest.getUserPrincipal()`/`isUserInRole`). For protected MCP Servers they come from the validated token.
+- **Protected MCP Server**: an MCP Server whose `McpApplication` subclass carries `@RolesAllowed` or `@DenyAll`. Crema validates bearer tokens itself, delegating **all** JOSE work to Nimbus JOSE+JWT; see [ADR 0002](adr/0002-crema-validates-bearer-tokens-with-nimbus.md). No hand-written token parsing, signature or claim logic. Specifically:
+  - Configuration, per MCP Server (MP Config, so MP Config is required for protected MCP Servers):
+    - `issuer` is required.
+    - `jwks-uri` is optional. It is otherwise read from the issuer's metadata at `<issuer>/.well-known/openid-configuration`, falling back to RFC 8414 `/.well-known/oauth-authorization-server`, and the metadata's `issuer` must equal the configured one.
+    - `resource` (see below).
+    - `roles-claim`: a dotted path, default `groups`. It accepts `realm_access.roles` for Keycloak and `roles` for Entra ID.
+    - `principal-claim`: default `sub`.
+    - `clock-skew-seconds`: default `60`.
+  - Deployment fails if a protected MCP Server has no `issuer` or MP Config is absent.
+  - Nimbus setup: `JWKSourceBuilder` (with caching, rate limiting and outage tolerance), a `DefaultJWTProcessor` limited to the asymmetric algorithms `RS256/384/512`, `PS256/384/512`, `ES256/384/512` and `EdDSA`, a `typ` of `at+jwt` or `JWT` (or absent), and a `DefaultJWTClaimsVerifier` requiring `iss` = issuer, `aud` ∋ Resource Identifier, and `exp`, and checking `nbf` with the configured skew. No `none`, no HMAC.
+  - Responses:
+    - No `Authorization: Bearer` header: `401` with `WWW-Authenticate: Bearer resource_metadata="<MCP Endpoint>/.well-known/oauth-protected-resource"`.
+    - Any validation failure: `401` with `error="invalid_token"` and `resource_metadata`. Details are logged, never returned.
+  - On success, the request's JAX-RS `SecurityContext` is replaced for MCP processing only: principal name from `principal-claim`, roles from `roles-claim`, `isSecure` from the request, and auth scheme `Bearer`.
+  - Protected Resource Metadata (RFC 9728) is served unauthenticated at `<MCP Endpoint>/.well-known/oauth-protected-resource`: `resource` is the Resource Identifier, `authorization_servers` is [issuer], and `bearer_methods_supported` is [`header`].
+  - Resource Identifier = the `resource` config (the MCP Endpoint's public URL, for use behind reverse proxies), else the MCP Endpoint URL derived from the request. RFC 9728 §3.3 requires it to equal the URL clients use, so it must never be anything else.
+  - Tokens are never forwarded anywhere (no passthrough).
+- **Caller for Feature Methods**: Injected Parameter `io.github.jungm.crema.McpCaller` (public API: `Principal`, plus `Map<String, Object> claims()`, empty for open MCP Servers) and plain `java.security.Principal`. Both are `null` for anonymous callers. The container (EJB `@RolesAllowed`, Jakarta Security `SecurityContext`, CDI `Principal`) does **not** see token callers.
+- OAuth scopes aren't mapped, and challenges carry no `scope` parameter.
 
 ## 8. Out of scope for milestone 1
 
@@ -107,4 +118,4 @@ Cancellation signalling (the `Cancellation` parameter never fires), `subscriptio
 - `crema`: JUnit 5 unit tests for everything that doesn't need a Runtime (schema generation, binding, conversion, JSON-RPC handling, validation, header validation).
 - `crema-it`: Arquillian deploys test WARs to each Runtime, one Maven profile per Runtime (`tomee`, `openliberty`, `wildfly`, and a non-default `websphere-liberty`), with managed containers that Maven provisions itself. Tests speak MCP over HTTP and cover every method, error path and security case. Tests use a plain `java.net.http.HttpClient` with JSON-P, and validate every result against the 2026-07-28 `schema.json`. The MCP Java SDK doesn't speak 2026-07-28 yet.
 - A conformance fixture WAR (the exact `test_*` fixtures listed in protocol-notes.md) runs against the official suite `@modelcontextprotocol/conformance@0.2.0-alpha.11` (`--requirements 2026-07-28`) on at least one Runtime. A checked-in baseline lists only the scenarios Crema doesn't support by design (MRTR, `-32021`), and the run must exit with 0.
-- First integration test: MP-JWT on an `McpApplication` coexists with a Jakarta Security `@OpenIdAuthenticationMechanismDefinition` elsewhere in the same WAR, on every Runtime.
+- Security integration tests: a protected MCP Server coexists with a Jakarta Security `@OpenIdAuthenticationMechanismDefinition` elsewhere in the same WAR, on every Runtime. Every `401`/`403` path is covered, using tokens minted by a fake Authorization Server in the test JVM (issuer metadata + JWKS, with key rotation).
