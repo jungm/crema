@@ -16,6 +16,11 @@ import org.mcpjava.server.McpServer;
  * {@code crema.default-server.<attr>} for the default MCP Server and {@code crema.servers.<name>.<attr>}
  * for named ones, with {@code <attr>} being {@code title}, {@code version}, {@code description},
  * {@code instructions} or {@code website-url}.
+ * <p>
+ * The same prefix holds the MCP Server's settings that only configuration provides: {@code resource}, the public URL
+ * of the MCP Endpoint and the MCP Server's Resource Identifier, and, for an MCP Server protected by
+ * {@code @RolesAllowed} or {@code @DenyAll} on its {@link McpApplication} subclass, {@code issuer},
+ * {@code jwks-uri}, {@code roles-claim}, {@code principal-claim} and {@code clock-skew-seconds}.
  */
 @Documented
 @Retention(RetentionPolicy.RUNTIME)
