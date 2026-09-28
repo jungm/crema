@@ -13,6 +13,7 @@ import java.util.concurrent.CompletionStage;
 import org.junit.jupiter.api.Test;
 import org.mcpjava.server.prompts.Prompt;
 import org.mcpjava.server.resources.Resource;
+import org.mcpjava.server.resources.ResourceTemplate;
 import org.mcpjava.server.tools.Tool;
 
 import io.github.jungm.crema.internal.config.ConfigLookup;
@@ -61,6 +62,11 @@ class InvocationsTest {
             throw new ExceptionInInitializerError("secret detail");
         }
 
+        @ResourceTemplate(uriTemplate = "file:///docs/{name}")
+        public String doc(String name) {
+            return "doc " + name;
+        }
+
         @Prompt
         public String promptError() {
             throw new LinkageError("secret detail");
@@ -92,6 +98,17 @@ class InvocationsTest {
     void errorsFromOtherFeaturesBecomeInternalErrors() {
         assertInternalError(handle("resources/read", Json.object().add("uri", "test://error")));
         assertInternalError(handle("prompts/get", Json.object().add("name", "promptError")));
+    }
+
+    @Test
+    void templateValuesAreSinglePathSegments() {
+        JsonObject result = result(handle("resources/read", Json.object().add("uri", "file:///docs/a%20b")));
+        assertEquals("doc a b", result.getJsonArray("contents").getJsonObject(0).getString("text"));
+        for (String uri : List.of("file:///docs/..%2F..%2Fetc%2Fpasswd", "file:///docs/..", "file:///docs/%2E")) {
+            JsonObject error = handle("resources/read", Json.object().add("uri", uri)).getJsonObject("error");
+            assertEquals(-32602, error.getInt("code"), uri);
+            assertEquals("Resource not found", error.getString("message"), uri);
+        }
     }
 
     static McpServerModel server(Class<?> type, Object instance) {

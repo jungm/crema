@@ -12,7 +12,9 @@ import java.util.regex.Pattern;
 
 /**
  * An RFC 6570 Level 1 URI template such as {@code db:///{database}/tables/{table}}. A variable matches a
- * non-empty value without {@code /}; percent-encoded octets in the value are decoded as UTF-8.
+ * non-empty value without {@code /}; percent-encoded octets in the value are decoded as UTF-8. A URI doesn't match
+ * if a decoded value is empty, contains {@code /} or {@code \}, or is {@code .} or {@code ..}, so each value is
+ * safe to use as a single path segment.
  */
 public final class UriTemplate {
 
@@ -22,11 +24,13 @@ public final class UriTemplate {
     private final String template;
     private final List<String> variables;
     private final Pattern pattern;
+    private final String shape;
 
-    private UriTemplate(String template, List<String> variables, Pattern pattern) {
+    private UriTemplate(String template, List<String> variables, Pattern pattern, String shape) {
         this.template = template;
         this.variables = variables;
         this.pattern = pattern;
+        this.shape = shape;
     }
 
     /**
@@ -38,10 +42,13 @@ public final class UriTemplate {
     public static UriTemplate parse(String template) {
         List<String> variables = new ArrayList<>();
         StringBuilder regex = new StringBuilder();
+        StringBuilder shape = new StringBuilder();
         Matcher matcher = VARIABLE.matcher(template);
         int end = 0;
         while (matcher.find()) {
-            regex.append(literal(template, template.substring(end, matcher.start())));
+            String literal = template.substring(end, matcher.start());
+            regex.append(literal(template, literal));
+            shape.append(literal).append("{}");
             String name = matcher.group(1);
             if (!VARNAME.matcher(name).matches()) {
                 throw new IllegalArgumentException("'{" + name + "}' in URI template '" + template
@@ -56,7 +63,9 @@ public final class UriTemplate {
             end = matcher.end();
         }
         regex.append(literal(template, template.substring(end)));
-        return new UriTemplate(template, List.copyOf(variables), Pattern.compile(regex.toString()));
+        shape.append(template.substring(end));
+        return new UriTemplate(template, List.copyOf(variables), Pattern.compile(regex.toString()),
+                shape.toString());
     }
 
     public String template() {
@@ -65,6 +74,14 @@ public final class UriTemplate {
 
     public List<String> variables() {
         return variables;
+    }
+
+    /**
+     * The template without its variable names, such as {@code db:///{}/tables/{}}. Templates with the same shape
+     * match the same URIs.
+     */
+    public String shape() {
+        return shape;
     }
 
     /**
@@ -77,9 +94,18 @@ public final class UriTemplate {
         }
         Map<String, String> values = new LinkedHashMap<>();
         for (int i = 0; i < variables.size(); i++) {
-            values.put(variables.get(i), decode(matcher.group(i + 1)));
+            String value = decode(matcher.group(i + 1));
+            if (!isSafe(value)) {
+                return Optional.empty();
+            }
+            values.put(variables.get(i), value);
         }
         return Optional.of(values);
+    }
+
+    private static boolean isSafe(String value) {
+        return !value.isEmpty() && value.indexOf('/') < 0 && value.indexOf('\\') < 0 && !value.equals(".")
+                && !value.equals("..");
     }
 
     private static String literal(String template, String literal) {

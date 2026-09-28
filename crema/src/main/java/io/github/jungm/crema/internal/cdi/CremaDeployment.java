@@ -4,6 +4,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.function.Consumer;
+import java.util.logging.Logger;
 
 import org.mcpjava.server.Icon;
 import org.mcpjava.server.IconProvider;
@@ -26,6 +27,8 @@ import io.github.jungm.crema.internal.protocol.Services;
  * Crema is packaged in {@code WEB-INF/lib}, so this state belongs to one web application.
  */
 public final class CremaDeployment {
+
+    private static final Logger LOG = Logger.getLogger(CremaDeployment.class.getName());
 
     private static Catalog catalog;
     private static Applications applications;
@@ -108,6 +111,7 @@ public final class CremaDeployment {
         ServerRegistry.Result result = ServerRegistry.build(declarations, catalog.features(),
                 applications.settings());
         problems.addAll(result.problems());
+        result.warnings().forEach(LOG::warning);
         if (problems.isEmpty()) {
             transport = new McpTransport(result.registry(), new Dispatcher(catalog.services()));
         }

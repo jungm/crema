@@ -103,10 +103,23 @@ class ServerRegistryTest {
         }
     }
 
+    public static class C {
+        @ResourceTemplate(uriTemplate = "x://{key}")
+        public String sameShape(String key) {
+            return null;
+        }
+
+        @ResourceTemplate(uriTemplate = "x://{key}/more")
+        public String otherShape(String key) {
+            return null;
+        }
+    }
+
     @Test
     void validRegistry() {
         ServerRegistry.Result result = build(List.of(declaration(DefaultApp.class)), A.class);
         assertEquals(List.of(), result.problems());
+        assertEquals(List.of(), result.warnings());
         McpServerModel server = result.registry().server(DefaultApp.class).orElseThrow();
         assertEquals("default", server.info().name());
         assertEquals("0.0.0", server.info().version());
@@ -136,6 +149,16 @@ class ServerRegistryTest {
         assertProblem(problems, "@Tool method " + b + "unbound(): is bound to the MCP Server 'nowhere', but no "
                 + "McpApplication declares it");
         assertEquals(7, problems.size(), problems.toString());
+    }
+
+    @Test
+    void templatesOfTheSameShapeAreWarnings() {
+        ServerRegistry.Result result = build(List.of(declaration(DefaultApp.class)), A.class, C.class);
+        assertEquals(List.of(), result.problems());
+        assertEquals(1, result.warnings().size(), result.warnings().toString());
+        String warning = result.warnings().get(0);
+        assertTrue(warning.contains("'x://{key}' matches the same URIs as 'x://{id}'")
+                || warning.contains("'x://{id}' matches the same URIs as 'x://{key}'"), warning);
     }
 
     @Test

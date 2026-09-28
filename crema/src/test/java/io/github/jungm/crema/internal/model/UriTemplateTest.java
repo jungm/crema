@@ -38,8 +38,25 @@ class UriTemplateTest {
     @Test
     void decodesPercentEncodedValues() {
         UriTemplate template = UriTemplate.parse("file:///{name}");
-        assertEquals(Optional.of(Map.of("name", "a b/ü")), template.match("file:///a%20b%2F%C3%BC"));
+        assertEquals(Optional.of(Map.of("name", "a b ü")), template.match("file:///a%20b%20%C3%BC"));
         assertEquals(Optional.of(Map.of("name", "100%")), template.match("file:///100%"));
+        assertEquals(Optional.of(Map.of("name", "...")), template.match("file:///%2E%2E%2E"));
+    }
+
+    @Test
+    void rejectsValuesThatArentSinglePathSegments() {
+        UriTemplate template = UriTemplate.parse("file:///docs/{name}");
+        for (String uri : List.of("file:///docs/..%2F..%2Fetc%2Fpasswd", "file:///docs/a%2fb", "file:///docs/..",
+                "file:///docs/.", "file:///docs/%2E%2E", "file:///docs/%2e", "file:///docs/..%5C..%5Cwindows",
+                "file:///docs/a\\b")) {
+            assertEquals(Optional.empty(), template.match(uri), uri);
+        }
+    }
+
+    @Test
+    void shapeIgnoresVariableNames() {
+        assertEquals("db:///{}/tables/{}", UriTemplate.parse("db:///{database}/tables/{table}").shape());
+        assertEquals(UriTemplate.parse("x://{a}").shape(), UriTemplate.parse("x://{b}").shape());
     }
 
     @Test
