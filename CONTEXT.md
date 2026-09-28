@@ -26,6 +26,10 @@ _Avoid_: audience, canonical URI, resource URL
 The OAuth identity provider that issues access tokens for MCP Servers.
 _Avoid_: IdP, OIDC provider, Keycloak
 
+**Caller**:
+The authenticated principal on whose behalf an MCP Client sends a request, or anonymous.
+_Avoid_: user, subject, client
+
 **MCP Client**:
 The AI application that connects to an MCP Server and calls its Features on behalf of a model or user.
 _Avoid_: agent, consumer, caller
