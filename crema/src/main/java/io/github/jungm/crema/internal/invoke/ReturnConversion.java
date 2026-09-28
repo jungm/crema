@@ -1,5 +1,6 @@
 package io.github.jungm.crema.internal.invoke;
 
+import java.lang.reflect.Type;
 import java.util.List;
 
 import org.mcpjava.server.Role;
@@ -15,6 +16,7 @@ import org.mcpjava.server.resources.TextResourceContents;
 import org.mcpjava.server.tools.ToolResponse;
 
 import io.github.jungm.crema.internal.bind.JsonbBridge;
+import io.github.jungm.crema.internal.bind.Types;
 
 /**
  * Converts the return values of Feature Methods and Completion Methods to responses.
@@ -61,18 +63,22 @@ public final class ReturnConversion {
      * {@code String} becomes text contents, {@code byte[]} blob contents, {@code ResourceContents}, a {@code List}
      * of them and {@code ResourceResponse} are used as is, and any other value is serialized with JSON-B into text
      * contents of the declared MIME type, else {@code application/json}. Generated contents carry the requested
-     * {@code uri}. An empty {@code List} becomes a response without contents.
+     * {@code uri}. An empty {@code List} becomes a response without contents only if the method declares a
+     * {@code List} of {@code ResourceContents}; any other empty {@code List} is serialized as {@code []}.
      *
+     * @param valueType the generic type of the values the method returns
      * @param mimeType the declared MIME type, or {@code null}
      */
-    public static ResourceResponse resource(Object value, String uri, String mimeType, JsonbBridge jsonb) {
+    public static ResourceResponse resource(Object value, Type valueType, String uri, String mimeType,
+            JsonbBridge jsonb) {
         if (value instanceof ResourceResponse response) {
             return response;
         }
         ResourceResponse.Builder response = ResourceResponse.builder();
         if (value instanceof ResourceContents contents) {
             response.addContents(contents);
-        } else if (value instanceof List<?> list && list.stream().allMatch(ResourceContents.class::isInstance)) {
+        } else if (value instanceof List<?> list && (list.isEmpty() ? isListOfResourceContents(valueType)
+                : list.stream().allMatch(ResourceContents.class::isInstance))) {
             list.forEach(item -> response.addContents((ResourceContents) item));
         } else if (value instanceof String text) {
             TextResourceContents.Builder contents = TextResourceContents.builder(uri, text);
@@ -135,6 +141,15 @@ public final class ReturnConversion {
             return CompletionResult.newCompleteResult(list.stream().map(String.class::cast).toList());
         }
         return CompletionResult.newCompleteResult(List.of());
+    }
+
+    private static boolean isListOfResourceContents(Type type) {
+        Type[] arguments = Types.typeArguments(type, List.class);
+        if (arguments == null) {
+            return false;
+        }
+        Class<?> element = Types.rawType(arguments[0]);
+        return element != Object.class && ResourceContents.class.isAssignableFrom(element);
     }
 
     private static boolean isContent(Object item) {

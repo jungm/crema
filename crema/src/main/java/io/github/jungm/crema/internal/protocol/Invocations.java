@@ -94,7 +94,8 @@ final class Invocations {
         }
         ResourceResponse response;
         try {
-            response = ReturnConversion.resource(value, uri, target.mimeType(), mapping.jsonb());
+            response = ReturnConversion.resource(value, target.feature().method().valueType(), uri,
+                    target.mimeType(), mapping.jsonb());
         } catch (RuntimeException e) {
             throw internal(target.feature(), e);
         }

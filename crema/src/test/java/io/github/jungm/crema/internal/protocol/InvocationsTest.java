@@ -84,6 +84,16 @@ class InvocationsTest {
             return List.of();
         }
 
+        @Resource(uri = "test://empty-async")
+        public java.util.concurrent.CompletionStage<List<ResourceContents>> emptyAsync() {
+            return java.util.concurrent.CompletableFuture.completedFuture(List.of());
+        }
+
+        @Resource(uri = "test://no-names")
+        public List<String> noNames() {
+            return List.of();
+        }
+
         @Prompt
         public String promptError() {
             throw new LinkageError("secret detail");
@@ -147,9 +157,19 @@ class InvocationsTest {
 
     @Test
     void resourcesWithoutContentsDontExist() {
-        JsonObject error = handle("resources/read", Json.object().add("uri", "test://empty")).getJsonObject("error");
-        assertEquals(-32602, error.getInt("code"));
-        assertEquals("Resource not found", error.getString("message"));
+        for (String uri : List.of("test://empty", "test://empty-async")) {
+            JsonObject error = handle("resources/read", Json.object().add("uri", uri)).getJsonObject("error");
+            assertEquals(-32602, error.getInt("code"), uri);
+            assertEquals("Resource not found", error.getString("message"), uri);
+        }
+    }
+
+    @Test
+    void emptyListsOfOtherValuesAreJson() {
+        JsonObject contents = result(handle("resources/read", Json.object().add("uri", "test://no-names")))
+                .getJsonArray("contents").getJsonObject(0);
+        assertEquals("[]", contents.getString("text"));
+        assertEquals("application/json", contents.getString("mimeType"));
     }
 
     static McpServerModel server(Class<?> type, Object instance) {

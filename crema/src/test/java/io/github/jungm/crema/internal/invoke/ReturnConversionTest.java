@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
+import java.lang.reflect.Type;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
@@ -19,6 +20,7 @@ import org.mcpjava.server.content.ContentBlock;
 import org.mcpjava.server.content.ImageContent;
 import org.mcpjava.server.content.TextContent;
 import org.mcpjava.server.prompts.PromptResponse;
+import org.mcpjava.server.resources.ResourceContents;
 import org.mcpjava.server.resources.ResourceResponse;
 import org.mcpjava.server.resources.TextResourceContents;
 import org.mcpjava.server.tools.ToolResponse;
@@ -109,12 +111,19 @@ class ReturnConversionTest {
                 new Point(1, 2), null);
         assertResource("[{\"uri\":\"x://a\",\"mimeType\":\"application/vnd.point+json\",\"text\":\"{\\\"x\\\":1,\\\"y\\\":2}\"}]",
                 new Point(1, 2), "application/vnd.point+json");
-        assertResource("[]", List.of(), "text/plain");
+        assertResource("[]", List.of(), returnType("contents"), "text/plain");
+        assertResource("[]", List.of(), returnType("textContents"), "text/plain");
+        assertResource("[{\"uri\":\"x://a\",\"mimeType\":\"text/plain\",\"text\":\"[]\"}]", List.of(),
+                returnType("points"), "text/plain");
+        assertResource("[{\"uri\":\"x://a\",\"mimeType\":\"application/json\",\"text\":\"[]\"}]", List.of(),
+                returnType("raw"), null);
+        assertResource("[{\"uri\":\"x://a\",\"mimeType\":\"application/json\",\"text\":\"[]\"}]", List.of(),
+                Object.class, null);
         assertResource("[{\"uri\":\"x://other\",\"text\":\"t\"}]", TextResourceContents.of("x://other", "t"), null);
         assertResource("[{\"uri\":\"x://1\",\"text\":\"1\"},{\"uri\":\"x://2\",\"text\":\"2\"}]",
                 List.of(TextResourceContents.of("x://1", "1"), TextResourceContents.of("x://2", "2")), null);
         ResourceResponse response = ResourceResponse.of("x://b", "b");
-        assertSame(response, ReturnConversion.resource(response, "x://a", null, JSONB));
+        assertSame(response, ReturnConversion.resource(response, ResourceResponse.class, "x://a", null, JSONB));
     }
 
     @Test
@@ -151,7 +160,34 @@ class ReturnConversionTest {
     }
 
     private static void assertResource(String expected, Object value, String mimeType) {
-        assertEquals(Json.parse(expected),
-                ProtocolJson.resourceContents(ReturnConversion.resource(value, "x://a", mimeType, JSONB), ENCODER));
+        assertResource(expected, value, value.getClass(), mimeType);
+    }
+
+    private static void assertResource(String expected, Object value, Type valueType, String mimeType) {
+        assertEquals(Json.parse(expected), ProtocolJson.resourceContents(
+                ReturnConversion.resource(value, valueType, "x://a", mimeType, JSONB), ENCODER));
+    }
+
+    /**
+     * Declared return types of Resource methods.
+     */
+    @SuppressWarnings("rawtypes")
+    interface Signatures {
+
+        List<ResourceContents> contents();
+
+        List<TextResourceContents> textContents();
+
+        List<Point> points();
+
+        List raw();
+    }
+
+    private static Type returnType(String method) {
+        try {
+            return Signatures.class.getMethod(method).getGenericReturnType();
+        } catch (NoSuchMethodException e) {
+            throw new IllegalStateException(e);
+        }
     }
 }

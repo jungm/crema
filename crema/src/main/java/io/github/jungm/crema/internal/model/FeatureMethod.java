@@ -3,6 +3,7 @@ package io.github.jungm.crema.internal.model;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.lang.reflect.Parameter;
+import java.lang.reflect.Type;
 import java.lang.reflect.UndeclaredThrowableException;
 import java.util.Arrays;
 import java.util.List;
@@ -55,6 +56,13 @@ public final class FeatureMethod {
      */
     public Set<String> servers() {
         return servers;
+    }
+
+    /**
+     * The generic type of the values the method returns, with a {@code CompletionStage<T>} unwrapped to {@code T}.
+     */
+    public Type valueType() {
+        return FeatureScanner.valueType(method);
     }
 
     public boolean acceptsProgress() {
