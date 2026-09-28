@@ -1,8 +1,6 @@
 package io.github.jungm.crema.internal.http;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.lang.reflect.Proxy;
 import java.util.Arrays;
@@ -10,13 +8,11 @@ import java.util.List;
 
 import org.junit.jupiter.api.Test;
 
-import io.github.jungm.crema.internal.json.Json;
-import jakarta.json.JsonObject;
 import jakarta.ws.rs.core.PathSegment;
 import jakarta.ws.rs.core.UriInfo;
 
 /**
- * Which requests the filter screens as requests to the MCP Endpoint.
+ * Which path below the application path a request addresses.
  */
 class McpEndpointFilterTest {
 
@@ -43,23 +39,16 @@ class McpEndpointFilterTest {
 
     @Test
     void theApplicationPathItselfIsTheEndpoint() {
-        assertTrue(McpEndpointFilter.isEndpoint(uriInfo()));
-        assertTrue(McpEndpointFilter.isEndpoint(uriInfo("")));
-        assertTrue(McpEndpointFilter.isEndpoint(uriInfo("", "")), "matrix parameters on an empty segment");
+        assertEquals(List.of(), McpEndpointFilter.path(uriInfo()));
+        assertEquals(List.of(), McpEndpointFilter.path(uriInfo("")));
+        assertEquals(List.of(), McpEndpointFilter.path(uriInfo("", "")), "matrix parameters on an empty segment");
     }
 
     @Test
     void subPathsAreNot() {
-        assertFalse(McpEndpointFilter.isEndpoint(uriInfo("tools")));
-        assertFalse(McpEndpointFilter.isEndpoint(uriInfo("", "x")));
-        assertFalse(McpEndpointFilter.isEndpoint(uriInfo(".well-known", "oauth-protected-resource")));
-    }
-
-    @Test
-    void unscreenedRequestsFailClosed() {
-        assertEquals(500, McpEndpoint.UNSCREENED.status());
-        JsonObject body = (JsonObject) Json.parse(McpEndpoint.UNSCREENED.body());
-        assertFalse(body.containsKey("id"));
-        assertEquals(-32603, body.getJsonObject("error").getInt("code"));
+        assertEquals(List.of("tools"), McpEndpointFilter.path(uriInfo("tools")));
+        assertEquals(List.of("x"), McpEndpointFilter.path(uriInfo("", "x")));
+        assertEquals(List.of(".well-known", "oauth-protected-resource"),
+                McpEndpointFilter.path(uriInfo(".well-known", "oauth-protected-resource", "")));
     }
 }

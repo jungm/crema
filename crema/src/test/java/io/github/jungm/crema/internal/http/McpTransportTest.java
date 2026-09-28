@@ -6,31 +6,24 @@ import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.io.ByteArrayInputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 
 import org.junit.jupiter.api.Test;
 
 import io.github.jungm.crema.McpServerInfo;
-import io.github.jungm.crema.internal.config.ConfigLookup;
+import io.github.jungm.crema.internal.TestDeployment;
 import io.github.jungm.crema.internal.config.CremaSettings;
-import io.github.jungm.crema.internal.config.ServerSettings;
-import io.github.jungm.crema.internal.invoke.ContentEncoders;
-import io.github.jungm.crema.internal.invoke.Mapping;
-import io.github.jungm.crema.internal.model.FeatureScanner;
-import io.github.jungm.crema.internal.model.IconLookup;
-import io.github.jungm.crema.internal.model.Scanning;
-import io.github.jungm.crema.internal.model.McpServerModel;
-import io.github.jungm.crema.internal.model.ServerRegistry;
-import io.github.jungm.crema.internal.protocol.Dispatcher;
 import io.github.jungm.crema.internal.json.Json;
-import io.github.jungm.crema.internal.protocol.Services;
-import io.github.jungm.crema.internal.security.AccessPolicy;
+import io.github.jungm.crema.internal.model.McpServerModel;
 import io.github.jungm.crema.internal.security.Caller;
 import jakarta.json.JsonArray;
 import jakarta.json.JsonObject;
@@ -45,8 +38,7 @@ class McpTransportTest {
     static class TestApp {
     }
 
-    private static final Mapping MAPPING = Mapping.create();
-    private static final McpTransport TRANSPORT = transport(CremaSettings.defaults(), AccessPolicy.PERMIT_ALL);
+    private static final McpTransport TRANSPORT = transport(CremaSettings.defaults());
     private static final McpServerModel SERVER = TRANSPORT.server(TestApp.class).orElseThrow();
 
     @Test
@@ -322,36 +314,34 @@ class McpTransportTest {
         assertFalse(last.toString().contains("secret"));
     }
 
+
     @Test
     void bodiesLargerThanTheLimitAreRejected() throws Exception {
-        McpTransport small = transport(new CremaSettings(List.of(), 0, 64), AccessPolicy.PERMIT_ALL);
+        McpTransport small = transport(new CremaSettings(List.of(), 0, 64));
         McpServerModel server = small.server(TestApp.class).orElseThrow();
         String body = RequestValidatorTest.body(1, "tools/list", "2026-07-28", "");
         assertTrue(body.length() > 64);
-        Map<String, String> headers = RequestValidatorTest.headers("2026-07-28", "tools/list", null);
-        java.util.function.Function<String, List<String>> lookup = name -> headers.containsKey(name)
-                ? List.of(headers.get(name)) : List.of();
+        Headers headers = RequestValidatorTest.lookup(RequestValidatorTest.headers("2026-07-28", "tools/list",
+                null));
         for (long length : new long[] {-1, body.length()}) {
-            McpTransport.Plan plan = small.plan(server, new java.io.ByteArrayInputStream(
-                    body.getBytes(StandardCharsets.UTF_8)), length, lookup, Caller.ANONYMOUS);
-            HttpReply reply = assertInstanceOf(McpTransport.Reply.class, plan).reply();
+            HttpReply reply = reply(small.handle(server, new HttpRequest("POST", headers, length,
+                    new ByteArrayInputStream(body.getBytes(StandardCharsets.UTF_8))), Caller.ANONYMOUS));
             assertEquals(413, reply.status());
             JsonObject message = (JsonObject) Json.parse(reply.body());
             assertFalse(message.containsKey("id"));
             assertEquals(-32600, message.getJsonObject("error").getInt("code"));
         }
-        java.io.InputStream unread = new java.io.InputStream() {
+        InputStream unread = new InputStream() {
             @Override
             public int read() {
                 throw new AssertionError("the body must not be read");
             }
         };
-        assertEquals(413, assertInstanceOf(McpTransport.Reply.class, small.plan(server, unread, 65, lookup,
-                Caller.ANONYMOUS)).reply().status());
+        assertEquals(413, reply(small.handle(server, new HttpRequest("POST", headers, 65, unread),
+                Caller.ANONYMOUS)).status());
 
-        McpTransport.Plan fits = TRANSPORT.plan(SERVER, new java.io.ByteArrayInputStream(
-                body.getBytes(StandardCharsets.UTF_8)), -1, lookup, Caller.ANONYMOUS);
-        assertInstanceOf(McpTransport.Respond.class, fits);
+        assertEquals(200, reply(TRANSPORT.handle(SERVER, HttpRequest.post(body.getBytes(StandardCharsets.UTF_8),
+                headers), Caller.ANONYMOUS)).status());
     }
 
     @Test
@@ -362,87 +352,63 @@ class McpTransportTest {
     }
 
     @Test
-    void screen() {
-        assertEquals(new McpTransport.Admitted(Caller.ANONYMOUS), TRANSPORT.screen(SERVER, null, Caller.ANONYMOUS));
-        assertEquals(new McpTransport.Admitted(Caller.ANONYMOUS),
-                TRANSPORT.screen(SERVER, "http://localhost:8080", Caller.ANONYMOUS));
-        HttpReply forbidden = ((McpTransport.Reply) TRANSPORT.screen(SERVER, "http://evil.example.com",
-                Caller.ANONYMOUS)).reply();
-        assertEquals(403, forbidden.status());
-        JsonObject body = (JsonObject) Json.parse(forbidden.body());
-        assertFalse(body.containsKey("id"));
-        assertEquals("2.0", body.getString("jsonrpc"));
-        assertTrue(body.containsKey("error"));
-
-        McpTransport anyOrigin = transport(new CremaSettings(List.of("*"), 0, CremaSettings.defaults().maxRequestBytes()), AccessPolicy.PERMIT_ALL);
-        assertEquals(new McpTransport.Admitted(Caller.ANONYMOUS),
-                anyOrigin.screen(SERVER, "http://evil.example.com", Caller.ANONYMOUS));
+    void otherHttpMethodsGet405WithoutReadingTheBody() throws Exception {
+        InputStream unread = new InputStream() {
+            @Override
+            public int read() {
+                throw new AssertionError("the body must not be read");
+            }
+        };
+        for (String method : List.of("GET", "DELETE", "PUT", "OPTIONS", "HEAD")) {
+            HttpReply reply = reply(TRANSPORT.handle(SERVER, new HttpRequest(method, Headers.NONE, -1, unread),
+                    Caller.ANONYMOUS));
+            assertEquals(405, reply.status(), method);
+            assertEquals(Map.of("Allow", "POST"), reply.headers(), method);
+            assertNull(reply.body(), method);
+        }
     }
 
     @Test
-    void accessPolicyHidesFeaturesAndRejectsCalls() {
-        AccessPolicy policy = new AccessPolicy() {
-            @Override
-            public Admission authenticate(McpServerModel server, Caller caller) {
-                return caller.header("Authorization").isEmpty()
-                        ? new Rejected(new Rejection(401, Map.of("WWW-Authenticate", "Bearer")))
-                        : new Admitted(caller);
-            }
+    void originIsCheckedBeforeAnythingElse() throws Exception {
+        assertEquals(405, reply(TRANSPORT.handle(SERVER, new HttpRequest("GET",
+                Headers.of(Map.of("origin", List.of("http://localhost:8080"))), -1, InputStream.nullInputStream()),
+                Caller.ANONYMOUS)).status());
+        for (String method : List.of("POST", "GET")) {
+            HttpReply forbidden = reply(TRANSPORT.handle(SERVER, new HttpRequest(method,
+                    Headers.of(Map.of("Origin", List.of("http://evil.example.com"))), -1,
+                    InputStream.nullInputStream()), Caller.ANONYMOUS));
+            assertEquals(403, forbidden.status());
+            JsonObject body = (JsonObject) Json.parse(forbidden.body());
+            assertFalse(body.containsKey("id"));
+            assertEquals("2.0", body.getString("jsonrpc"));
+            assertEquals(-32600, body.getJsonObject("error").getInt("code"));
+        }
 
-            @Override
-            public Optional<JsonObject> resourceMetadata(McpServerModel server) {
-                return Optional.empty();
-            }
+        McpTransport anyOrigin = transport(new CremaSettings(List.of("*"), 0, CremaSettings.defaults().maxRequestBytes()));
+        assertEquals(405, reply(anyOrigin.handle(anyOrigin.server(TestApp.class).orElseThrow(),
+                new HttpRequest("GET", Headers.of(Map.of("Origin", List.of("http://evil.example.com"))), -1,
+                        InputStream.nullInputStream()), Caller.ANONYMOUS)).status());
+    }
 
-            @Override
-            public boolean permits(McpServerModel server, io.github.jungm.crema.internal.model.Feature feature,
-                    Caller caller) {
-                return !feature.name().equals("add");
-            }
-
-            @Override
-            public Rejection forbidden(McpServerModel server, Caller caller) {
-                return new Rejection(403, Map.of("WWW-Authenticate", "Bearer error=\"insufficient_scope\""));
-            }
-
-            @Override
-            public boolean isPrivate(McpServerModel server, Caller caller) {
-                return true;
-            }
-        };
-        McpTransport secured = transport(CremaSettings.defaults(), policy);
-        McpServerModel server = secured.server(TestApp.class).orElseThrow();
-        assertEquals(401, ((McpTransport.Reply) secured.screen(server, null, Caller.ANONYMOUS)).reply().status());
-        Exchange list = exchange(secured, server, RequestValidatorTest.body(1, "tools/list", "2026-07-28", ""),
-                RequestValidatorTest.headers("2026-07-28", "tools/list", null));
-        JsonObject result = list.messages().get(0).getJsonObject("result");
-        assertEquals("private", result.getString("cacheScope"));
-        assertFalse(result.getJsonArray("tools").stream()
-                .anyMatch(t -> t.asJsonObject().getString("name").equals("add")));
-        Exchange call = exchange(secured, server,
-                RequestValidatorTest.body(1, "tools/call", "2026-07-28", ",\"name\":\"add\""),
-                RequestValidatorTest.headers("2026-07-28", "tools/call", "add"));
-        assertEquals(403, call.status());
-        assertEquals(List.of(), call.messages());
-        assertEquals("Bearer error=\"insufficient_scope\"", call.headers().get("WWW-Authenticate"));
+    @Test
+    void resourceMetadataIsNotFoundOnOpenMcpServers() {
+        assertEquals(404, TRANSPORT.resourceMetadata(SERVER, "GET").status());
+        assertEquals(404, TRANSPORT.resourceMetadata(SERVER, "POST").status());
     }
 
     record Exchange(int status, Map<String, String> headers, List<JsonObject> messages, boolean streamed) {
     }
 
-    static McpTransport transport(CremaSettings settings, AccessPolicy access) {
-        FeatureScanner scanner = new FeatureScanner(MAPPING, IconLookup.reflective());
-        Scanning.scan(scanner, Fixtures.Tools.class, new Fixtures.Tools());
-        Scanning.scan(scanner, Fixtures.Resources.class, new Fixtures.Resources());
-        Scanning.scan(scanner, Fixtures.Prompts.class, new Fixtures.Prompts());
-        assertEquals(List.of(), scanner.problems());
-        ServerRegistry.Result result = ServerRegistry.build(List.of(new ServerRegistry.Declaration(TestApp.class,
-                ServerSettings.resolve(TestApp.class.getAnnotation(McpServerInfo.class), ConfigLookup.none(),
-                        Optional::empty),
-                List.of())), scanner.features(), settings);
-        assertEquals(List.of(), result.problems());
-        return new McpTransport(result.registry(),
-                new Dispatcher(new Services(MAPPING, new ContentEncoders(List::of), access)));
+    static McpTransport transport(CremaSettings settings) {
+        return TestDeployment.create().application(TestApp.class).settings(settings)
+                .bean(Fixtures.Tools.class, new Fixtures.Tools())
+                .bean(Fixtures.Resources.class, new Fixtures.Resources())
+                .bean(Fixtures.Prompts.class, new Fixtures.Prompts())
+                .transport();
+    }
+
+    private static HttpReply reply(McpTransport.Outcome outcome) {
+        return assertInstanceOf(HttpReply.class, outcome);
     }
 
     private static Exchange call(String method, String params, String name) {
@@ -451,17 +417,17 @@ class McpTransportTest {
     }
 
     private static Exchange post(String body, Map<String, String> headers) {
-        return exchange(TRANSPORT, SERVER, body, headers);
-    }
-
-    private static Exchange exchange(McpTransport transport, McpServerModel server, String body,
-            Map<String, String> headers) {
-        McpTransport.Plan plan = transport.plan(server, body.getBytes(StandardCharsets.UTF_8),
-                name -> headers.containsKey(name) ? List.of(headers.get(name)) : List.of(), Caller.ANONYMOUS);
-        if (plan instanceof McpTransport.Stream stream) {
+        McpTransport.Outcome outcome;
+        try {
+            outcome = TRANSPORT.handle(SERVER, HttpRequest.post(body.getBytes(StandardCharsets.UTF_8),
+                    RequestValidatorTest.lookup(headers)), Caller.ANONYMOUS);
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
+        if (outcome instanceof McpTransport.Stream stream) {
             List<JsonObject> events = new ArrayList<>();
             boolean[] closed = {false};
-            transport.stream(server, stream.request(), Caller.ANONYMOUS, new McpTransport.EventStream() {
+            stream.writeTo(new McpTransport.EventStream() {
                 @Override
                 public CompletionStage<?> send(String json) {
                     assertFalse(closed[0]);
@@ -478,9 +444,7 @@ class McpTransportTest {
             assertTrue(closed[0]);
             return new Exchange(200, Map.of(), events, true);
         }
-        HttpReply reply = plan instanceof McpTransport.Reply r ? r.reply()
-                : transport.respond(server, assertInstanceOf(McpTransport.Respond.class, plan).request(),
-                        Caller.ANONYMOUS);
+        HttpReply reply = reply(outcome);
         if (reply.body() != null) {
             assertFalse(reply.body().contains("\n"));
         }

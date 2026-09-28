@@ -20,7 +20,6 @@ import com.nimbusds.jose.jwk.source.URLBasedJWKSetSource;
 import com.nimbusds.jose.proc.BadJOSEException;
 import com.nimbusds.jose.proc.DefaultJOSEObjectTypeVerifier;
 import com.nimbusds.jose.proc.JOSEObjectTypeVerifier;
-import com.nimbusds.jose.proc.JWSKeySelector;
 import com.nimbusds.jose.proc.JWSVerificationKeySelector;
 import com.nimbusds.jose.proc.SecurityContext;
 import com.nimbusds.jose.util.ResourceRetriever;
@@ -75,12 +74,10 @@ final class TokenValidator implements Closeable {
                 JWKSourceBuilder.DEFAULT_HTTP_SIZE_LIMIT);
     }
 
-    private final Protection protection;
     private final JWKSource<SecurityContext> keys;
-    private final JWSKeySelector<SecurityContext> keySelector;
+    private final DefaultJWTProcessor<SecurityContext> processor = new DefaultJWTProcessor<>();
 
     TokenValidator(Protection protection, Tuning tuning) {
-        this.protection = protection;
         int timeout = (int) tuning.httpTimeout().toMillis();
         ResourceRetriever retriever = new NoRedirectResourceRetriever(timeout, timeout, tuning.sizeLimit());
         JWKSetSource<SecurityContext> source;
@@ -105,29 +102,29 @@ final class TokenValidator implements Closeable {
                 .retrying(true)
                 .outageTolerant(true)
                 .build();
-        this.keySelector = new JWSVerificationKeySelector<>(ALGORITHMS, keys);
+        Set<String> required = new HashSet<>(Set.of(JWTClaimNames.EXPIRATION_TIME));
+        if (!protection.principalClaim().contains(".")) {
+            required.add(protection.principalClaim());
+        }
+        DefaultJWTClaimsVerifier<SecurityContext> claims = new DefaultJWTClaimsVerifier<>(
+                Set.of(protection.resource()), new JWTClaimsSet.Builder().issuer(protection.issuer()).build(),
+                required, null);
+        claims.setMaxClockSkew(protection.clockSkewSeconds());
+        processor.setJWSTypeVerifier(TYPES);
+        processor.setJWSKeySelector(new JWSVerificationKeySelector<>(ALGORITHMS, keys));
+        processor.setJWTClaimsSetVerifier(claims);
     }
 
     /**
-     * Validates a token for a Resource Identifier.
+     * Validates a token for the MCP Server's Resource Identifier. The processor is configured once, in the
+     * constructor, and is safe for concurrent use.
      *
      * @return the token's claims
      * @throws ParseException if the token isn't a JWT
      * @throws BadJOSEException if the token is rejected
      * @throws JOSEException if the token can't be verified, for example because the keys can't be retrieved
      */
-    JWTClaimsSet validate(String token, String resource) throws ParseException, BadJOSEException, JOSEException {
-        Set<String> required = new HashSet<>(Set.of(JWTClaimNames.EXPIRATION_TIME));
-        if (!protection.principalClaim().contains(".")) {
-            required.add(protection.principalClaim());
-        }
-        DefaultJWTClaimsVerifier<SecurityContext> claims = new DefaultJWTClaimsVerifier<>(Set.of(resource),
-                new JWTClaimsSet.Builder().issuer(protection.issuer()).build(), required, null);
-        claims.setMaxClockSkew(protection.clockSkewSeconds());
-        DefaultJWTProcessor<SecurityContext> processor = new DefaultJWTProcessor<>();
-        processor.setJWSTypeVerifier(TYPES);
-        processor.setJWSKeySelector(keySelector);
-        processor.setJWTClaimsSetVerifier(claims);
+    JWTClaimsSet validate(String token) throws ParseException, BadJOSEException, JOSEException {
         return processor.process(token, null);
     }
 

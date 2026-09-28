@@ -1,23 +1,18 @@
 package io.github.jungm.crema.internal.security;
 
 import java.security.Principal;
-import java.util.List;
 import java.util.Map;
 
 import io.github.jungm.crema.McpCaller;
 
 /**
- * Who sends the current request. Some Runtimes throw from {@link #principal()} and {@link #isUserInRole(String)}
- * when the request carries no credentials, so an {@link AccessPolicy} checks {@link #header(String)} first.
+ * Who sends the current request: the caller the Runtime authenticated, or the caller of a validated bearer token.
+ * Some Runtimes throw from {@link #principal()} and {@link #isUserInRole(String)} when the request carries no
+ * credentials they know, which means that there is no principal.
  */
 public interface Caller {
 
     Caller ANONYMOUS = new Caller() {
-        @Override
-        public List<String> header(String name) {
-            return List.of();
-        }
-
         @Override
         public Principal principal() {
             return null;
@@ -28,11 +23,6 @@ public interface Caller {
             return false;
         }
     };
-
-    /**
-     * The values of a request header, by case-insensitive name; empty when absent.
-     */
-    List<String> header(String name);
 
     /**
      * The authenticated principal, or {@code null}.

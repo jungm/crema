@@ -4,12 +4,14 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 import io.github.jungm.crema.McpServerInfo;
 import io.github.jungm.crema.internal.config.ConfigLookup;
 import io.github.jungm.crema.internal.config.CremaSettings;
 import io.github.jungm.crema.internal.config.ServerSettings;
+import io.github.jungm.crema.internal.http.McpTransport;
 import io.github.jungm.crema.internal.invoke.ContentEncoders;
 import io.github.jungm.crema.internal.invoke.Mapping;
 import io.github.jungm.crema.internal.model.FeatureScanner;
@@ -19,7 +21,7 @@ import io.github.jungm.crema.internal.model.Scanning;
 import io.github.jungm.crema.internal.model.ServerRegistry;
 import io.github.jungm.crema.internal.protocol.Dispatcher;
 import io.github.jungm.crema.internal.protocol.Services;
-import io.github.jungm.crema.internal.security.AccessPolicy;
+import io.github.jungm.crema.internal.security.CremaAccessPolicy;
 
 /**
  * Assembles what the CDI extension and the servlet initializer assemble at deployment, without a Runtime: beans are
@@ -113,7 +115,28 @@ public final class TestDeployment {
      * A dispatcher with Crema's {@link Mapping}, the {@link #encoders(ContentEncoders) encoders} and an access
      * policy.
      */
-    public Dispatcher dispatcher(AccessPolicy access) {
+    public Dispatcher dispatcher(CremaAccessPolicy access) {
         return new Dispatcher(new Services(MAPPING, encoders, access));
+    }
+
+    /**
+     * A dispatcher whose MCP Servers, from a registry without problems, are all open.
+     */
+    public Dispatcher dispatcher() {
+        return dispatcher(openPolicy(registry()));
+    }
+
+    /**
+     * The transport of a registry without problems, whose MCP Servers are all open.
+     */
+    public McpTransport transport() {
+        ServerRegistry registry = registry();
+        return new McpTransport(registry, dispatcher(openPolicy(registry)));
+    }
+
+    private static CremaAccessPolicy openPolicy(ServerRegistry registry) {
+        CremaAccessPolicy.Result policy = CremaAccessPolicy.create(registry.servers(), Map.of());
+        assertEquals(List.of(), policy.problems(), "problems building the access policy");
+        return policy.policy();
     }
 }

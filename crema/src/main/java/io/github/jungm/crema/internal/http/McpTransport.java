@@ -1,14 +1,11 @@
 package io.github.jungm.crema.internal.http;
 
 import java.io.IOException;
-import java.io.InputStream;
-import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.function.Function;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -18,21 +15,26 @@ import io.github.jungm.crema.internal.model.ServerRegistry;
 import io.github.jungm.crema.internal.protocol.Dispatcher;
 import io.github.jungm.crema.internal.json.Json;
 import io.github.jungm.crema.internal.protocol.McpError;
+import io.github.jungm.crema.internal.protocol.Rejection;
 import io.github.jungm.crema.internal.protocol.Request;
-import io.github.jungm.crema.internal.security.AccessPolicy;
-import io.github.jungm.crema.internal.security.AccessPolicy.RejectedException;
 import io.github.jungm.crema.internal.security.Caller;
+import io.github.jungm.crema.internal.security.CremaAccessPolicy;
 import jakarta.json.JsonObject;
 
 /**
  * Streamable HTTP for the MCP Servers of one application, independent of JAX-RS. Every request to an MCP Endpoint
- * passes the {@code Origin} check and then authentication; a {@code POST} is then validated and answered either
- * with one JSON response or, when it invokes a Feature Method that reports progress to a client that asked for it,
- * with an SSE stream. JSON-RPC errors use HTTP {@code 200} unless the spec names a status.
+ * passes the {@code Origin} check and then authentication, whatever its HTTP method; a {@code POST} is then read,
+ * validated and answered either with one JSON response or, when it invokes a Feature Method that reports progress
+ * to a client that asked for it, with an SSE stream. JSON-RPC errors use HTTP {@code 200} unless the spec names a
+ * status. A request that is rejected, for whatever reason, is answered with a {@link HttpReply}; nothing but a
+ * {@link VirtualMachineError} escapes.
  */
 public final class McpTransport {
 
     private static final Logger LOG = Logger.getLogger(McpTransport.class.getName());
+
+    private static final String ORIGIN = "Origin";
+    private static final String AUTHORIZATION = "Authorization";
 
     private final ServerRegistry registry;
     private final Dispatcher dispatcher;
@@ -52,159 +54,129 @@ public final class McpTransport {
     }
 
     /**
-     * The checks every request to an MCP Endpoint passes, whatever its HTTP method: the {@code Origin} check, then
-     * authentication.
+     * How a request is answered: with one {@link HttpReply}, or with an SSE {@link Stream}.
+     */
+    public sealed interface Outcome permits HttpReply, Stream {
+    }
+
+    /**
+     * Handles one request to the MCP Endpoint of an MCP Server. A {@code POST} body larger than
+     * {@code crema.max-request-bytes}, by {@code Content-Length} or while reading, is answered with {@code 413}
+     * and a JSON-RPC {@code -32600} error without {@code id}.
      *
-     * @param origin the {@code Origin} header, or {@code null}
      * @param caller the caller according to the Runtime
-     * @return the caller to process the request for, or the response that rejects the request
+     * @throws IOException if the body can't be read
      */
-    public Screening screen(McpServerModel server, String origin, Caller caller) {
-        if (!origins.permits(origin)) {
-            return new Reply(HttpReply.json(403, Json.write(Dispatcher.error(null,
-                    new McpError(McpError.INVALID_REQUEST, "Origin not allowed: " + origin, null, 403)).message())));
+    public Outcome handle(McpServerModel server, HttpRequest request, Caller caller) throws IOException {
+        try {
+            String origin = request.headers().first(ORIGIN);
+            if (!origins.permits(origin)) {
+                return HttpReply.error(new McpError(McpError.INVALID_REQUEST, "Origin not allowed: " + origin,
+                        null, 403));
+            }
+            Caller admitted = access().authenticate(server, caller, request.headers().all(AUTHORIZATION));
+            if (!"POST".equals(request.method())) {
+                return HttpReply.empty(405).withHeader("Allow", "POST");
+            }
+            Optional<Request> validated = RequestValidator.validate(read(request), request.headers());
+            if (validated.isEmpty()) {
+                return HttpReply.empty(202);
+            }
+            return dispatch(server, validated.get(), admitted);
+        } catch (Rejection e) {
+            return HttpReply.of(e);
         }
-        AccessPolicy.Admission admission = dispatcher.services().access().authenticate(server, caller);
-        if (admission instanceof AccessPolicy.Rejected rejected) {
-            return new Reply(reply(rejected.rejection()));
+    }
+
+    /**
+     * The Protected Resource Metadata (RFC 9728) of a protected MCP Server, for {@code GET}; {@code 404} for other
+     * MCP Servers. It is served to anyone, without the {@code Origin} check.
+     */
+    public HttpReply resourceMetadata(McpServerModel server, String method) {
+        Optional<JsonObject> metadata = access().resourceMetadata(server);
+        if (metadata.isEmpty()) {
+            return HttpReply.empty(404);
         }
-        return new Admitted(((AccessPolicy.Admitted) admission).caller());
+        if (!"GET".equals(method)) {
+            return HttpReply.empty(405).withHeader("Allow", "GET");
+        }
+        return new HttpReply(200, Map.of(), Json.write(metadata.get()));
     }
 
-    /**
-     * The outcome of {@link #screen}: a {@link Reply} that rejects the request, or {@link Admitted}.
-     */
-    public sealed interface Screening {
-    }
-
-    /**
-     * The request proceeds on behalf of {@code caller}.
-     */
-    public record Admitted(Caller caller) implements Screening {
-    }
-
-    /**
-     * The Protected Resource Metadata (RFC 9728) of a protected MCP Server, or {@code 404} for other MCP Servers.
-     * It is served to anyone, without the {@code Origin} check.
-     */
-    public HttpReply resourceMetadata(McpServerModel server) {
-        return dispatcher.services().access().resourceMetadata(server)
-                .map(metadata -> HttpReply.json(200, Json.write(metadata)))
-                .orElseGet(() -> new HttpReply(404, Map.of(), null));
-    }
-
-    /**
-     * How to answer a {@code POST} that passed {@link #screen}.
-     */
-    public sealed interface Plan {
-    }
-
-    /**
-     * Answer with this response.
-     */
-    public record Reply(HttpReply reply) implements Plan, Screening {
-    }
-
-    /**
-     * Answer the request with one JSON response ({@link #respond}).
-     */
-    public record Respond(Request request) implements Plan {
-    }
-
-    /**
-     * Answer the request with an SSE stream ({@link #stream}).
-     */
-    public record Stream(Request request) implements Plan {
-    }
-
-    /**
-     * Reads a {@code POST} body of at most {@code crema.max-request-bytes} and validates it with its headers. A
-     * larger body, by {@code Content-Length} or while reading, is answered with {@code 413} and a JSON-RPC
-     * {@code -32600} error without {@code id}.
-     *
-     * @param contentLength the {@code Content-Length}, or {@code -1} if unknown
-     */
-    public Plan plan(McpServerModel server, InputStream body, long contentLength,
-            Function<String, List<String>> headers, Caller caller) throws IOException {
+    private byte[] read(HttpRequest request) throws IOException {
         long max = registry.settings().maxRequestBytes();
-        if (contentLength > max) {
-            return new Reply(tooLarge(max));
+        if (request.contentLength() > max) {
+            throw tooLarge(max);
         }
-        byte[] bytes = body.readNBytes((int) Math.min(max + 1, Integer.MAX_VALUE - 8));
+        byte[] bytes = request.body().readNBytes((int) Math.min(max + 1, Integer.MAX_VALUE - 8));
         if (bytes.length > max) {
-            return new Reply(tooLarge(max));
+            throw tooLarge(max);
         }
-        return plan(server, bytes, headers, caller);
+        return bytes;
     }
 
-    private static HttpReply tooLarge(long max) {
-        return HttpReply.json(413, Json.write(Dispatcher.error(null, new McpError(McpError.INVALID_REQUEST,
-                "Request body exceeds " + max + " bytes", null, 413)).message()));
+    private static Rejection tooLarge(long max) {
+        return Rejection.of(null, new McpError(McpError.INVALID_REQUEST, "Request body exceeds " + max + " bytes",
+                null, 413));
     }
 
-    /**
-     * Validates a {@code POST} body and its headers.
-     *
-     * @param headers the values of a request header by case-insensitive name
-     */
-    public Plan plan(McpServerModel server, byte[] body, Function<String, List<String>> headers, Caller caller) {
-        RequestValidator.Result result = RequestValidator.validate(body, headers);
-        if (result instanceof RequestValidator.Rejected rejected) {
-            return new Reply(reply(rejected.response()));
-        }
-        if (result instanceof RequestValidator.Notification) {
-            return new Reply(new HttpReply(202, Map.of(), null));
-        }
-        Request request = ((RequestValidator.Accepted) result).request();
+    private Outcome dispatch(McpServerModel server, Request request, Caller caller) {
         try {
-            return dispatcher.streams(server, request, caller) ? new Stream(request) : new Respond(request);
-        } catch (RejectedException e) {
-            return new Reply(reply(e.rejection()));
-        }
-    }
-
-    /**
-     * Handles a request and answers it with one JSON response.
-     */
-    public HttpReply respond(McpServerModel server, Request request, Caller caller) {
-        try {
-            return reply(dispatcher.handle(server, request, caller, ProgressChannel.NONE));
-        } catch (RejectedException e) {
-            return reply(e.rejection());
+            if (dispatcher.streams(server, request, caller)) {
+                return new Stream(server, request, caller);
+            }
+            return HttpReply.of(dispatcher.handle(server, request, caller, ProgressChannel.NONE));
+        } catch (Rejection e) {
+            return HttpReply.of(e);
         } catch (RuntimeException | Error e) {
-            return reply(internalError(request, e));
-        }
-    }
-
-    /**
-     * Handles a request on the current thread, writing its progress notifications and then its response to an SSE
-     * stream, which is closed afterwards.
-     */
-    public void stream(McpServerModel server, Request request, Caller caller, EventStream events) {
-        StreamChannel channel = new StreamChannel(events);
-        JsonObject response = null;
-        try {
-            response = dispatcher.handle(server, request, caller, channel).message();
-        } catch (RejectedException e) {
-            response = Dispatcher.error(request.id(), McpError.internal("Forbidden")).message();
-        } catch (RuntimeException | Error e) {
-            response = internalError(request, e).message();
-        } finally {
-            channel.finish(response != null ? response
-                    : Dispatcher.error(request.id(), McpError.internal("Internal error")).message());
+            return HttpReply.of(lastResort(request, e));
         }
     }
 
     /**
      * The last resort for a failure that escaped the {@link Dispatcher}; the Runtime must never see it, since it
-     * would answer with a stack trace or leave an SSE stream open. A {@link VirtualMachineError} is rethrown.
+     * would answer with a stack trace or leave an SSE stream open.
      */
-    private static Dispatcher.Response internalError(Request request, Throwable failure) {
-        if (failure instanceof VirtualMachineError error) {
-            throw error;
+    private static Dispatcher.Response lastResort(Request request, Throwable failure) {
+        return Dispatcher.error(request.id(), Dispatcher.internalError("Handling " + request.method(), failure));
+    }
+
+    private CremaAccessPolicy access() {
+        return dispatcher.services().access();
+    }
+
+    /**
+     * A request answered with an SSE stream. The caller's access to the Feature it invokes has been checked, so
+     * handling it doesn't reject it once the stream has started.
+     */
+    public final class Stream implements Outcome {
+
+        private final McpServerModel server;
+        private final Request request;
+        private final Caller caller;
+
+        private Stream(McpServerModel server, Request request, Caller caller) {
+            this.server = server;
+            this.request = request;
+            this.caller = caller;
         }
-        LOG.log(Level.WARNING, "Handling " + request.method() + " failed", failure);
-        return Dispatcher.error(request.id(), McpError.internal("Internal error"));
+
+        /**
+         * Handles the request on the current thread, writing its progress notifications and then its response
+         * to {@code events}, which is closed afterwards.
+         */
+        public void writeTo(EventStream events) {
+            StreamChannel channel = new StreamChannel(events);
+            JsonObject response = null;
+            try {
+                response = dispatcher.handle(server, request, caller, channel).message();
+            } catch (RuntimeException | Error e) {
+                response = lastResort(request, e).message();
+            } finally {
+                channel.finish(response != null ? response
+                        : Dispatcher.error(request.id(), McpError.internal("Internal error")).message());
+            }
+        }
     }
 
     /**
@@ -218,14 +190,6 @@ public final class McpTransport {
         CompletionStage<?> send(String json);
 
         void close();
-    }
-
-    private static HttpReply reply(Dispatcher.Response response) {
-        return HttpReply.json(response.status(), Json.write(response.message()));
-    }
-
-    private static HttpReply reply(AccessPolicy.Rejection rejection) {
-        return new HttpReply(rejection.status(), rejection.headers(), null);
     }
 
     /**

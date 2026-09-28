@@ -70,8 +70,10 @@ public final class Invocation {
                 return caller.mcpCaller();
             case PRINCIPAL:
                 return principal();
-            default:
+            case COMPLETION_CONTEXT:
                 return completionContext;
+            default:
+                throw new IllegalStateException("Unknown Injected Parameter " + param);
         }
     }
 

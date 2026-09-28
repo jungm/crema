@@ -1,6 +1,6 @@
 # Crema validates bearer tokens itself, using Nimbus JOSE+JWT
 
-Protected MCP Servers validate bearer tokens in a JAX-RS filter inside `McpApplication`. The filter delegates all JOSE work (JWKS retrieval, caching and rotation, algorithm and signature checks, `typ`, and issuer/audience/expiry verification) to Nimbus JOSE+JWT (`com.nimbusds:nimbus-jose-jwt`). It sets the caller on the JAX-RS `SecurityContext` of MCP requests only. Crema writes no cryptographic or token-parsing code of its own.
+Protected MCP Servers validate bearer tokens in a JAX-RS filter inside `McpApplication`. The filter delegates all JOSE work (JWKS retrieval, caching and rotation, algorithm and signature checks, `typ`, and issuer/audience/expiry verification) to Nimbus JOSE+JWT (`com.nimbusds:nimbus-jose-jwt`). The token's caller is the caller of that MCP request only. Crema writes no cryptographic or token-parsing code of its own.
 
 ## Considered Options
 

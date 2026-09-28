@@ -15,6 +15,8 @@ import org.mcpjava.server.IconProvider;
 import io.github.jungm.crema.internal.config.CremaSettings;
 import io.github.jungm.crema.internal.config.ServerSettings;
 import io.github.jungm.crema.internal.http.McpTransport;
+import io.github.jungm.crema.internal.invoke.ContentEncoders;
+import io.github.jungm.crema.internal.invoke.Mapping;
 import io.github.jungm.crema.internal.model.Feature;
 import io.github.jungm.crema.internal.model.IconLookup;
 import io.github.jungm.crema.internal.model.ServerRegistry;
@@ -57,7 +59,7 @@ public final class CremaDeployment {
     /**
      * The Features the CDI extension found, and what handling requests needs.
      */
-    public record Catalog(List<Feature> features, Services services, IconLookup icons) {
+    public record Catalog(List<Feature> features, Mapping mapping, ContentEncoders encoders, IconLookup icons) {
     }
 
     /**
@@ -127,10 +129,25 @@ public final class CremaDeployment {
      * Forgets everything, for tests.
      */
     static synchronized void reset() {
-        shutdown();
+        stop();
         catalog = null;
         applications = null;
         owner = null;
+    }
+
+    /**
+     * Stops serving MCP for good, when the web application stops: releases what the MCP Servers hold and Crema's
+     * {@code Jsonb}.
+     */
+    static synchronized void stop() {
+        shutdown();
+        if (catalog != null) {
+            try {
+                catalog.mapping().close();
+            } catch (RuntimeException e) {
+                LOG.log(Level.FINE, "Couldn't close Crema's Jsonb", e);
+            }
+        }
     }
 
     /**
@@ -174,7 +191,7 @@ public final class CremaDeployment {
 
         @Override
         public void contextDestroyed(ServletContextEvent event) {
-            shutdown();
+            stop();
         }
     }
 
@@ -214,9 +231,8 @@ public final class CremaDeployment {
         }
         shutdown();
         access = policy.policy();
-        Services services = catalog.services();
         transport = new McpTransport(result.registry(),
-                new Dispatcher(new Services(services.mapping(), services.encoders(), access)));
+                new Dispatcher(new Services(catalog.mapping(), catalog.encoders(), access)));
         return problems;
     }
 }

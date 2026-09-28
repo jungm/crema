@@ -11,12 +11,12 @@ import jakarta.servlet.http.HttpServletResponse;
 import jakarta.servlet.http.HttpServletResponseWrapper;
 
 /**
- * Makes a committed response final on the paths of the {@code McpApplication}s. Crema writes each MCP response
+ * Makes a committed response final on the paths of the {@code McpApplication}s. Crema writes each response
  * straight to the servlet response and commits it ({@link JaxRs#write}); the JAX-RS runtime and the application's
  * providers then still set a status and headers, which this filter drops silently instead of letting the Runtime
  * log a warning for each request (Liberty: SRVE8115W).
  */
-public final class CommittedResponseFilter implements Filter {
+final class CommittedResponseFilter implements Filter {
 
     @Override
     public void doFilter(ServletRequest request, ServletResponse response, FilterChain chain)

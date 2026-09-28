@@ -4,6 +4,8 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.lang.reflect.Proxy;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
@@ -30,7 +32,9 @@ import org.mcpjava.server.tools.Tool;
 import io.github.jungm.crema.internal.config.ConfigLookup;
 import io.github.jungm.crema.internal.config.CremaSettings;
 import io.github.jungm.crema.internal.config.ServerSettings;
+import io.github.jungm.crema.internal.http.Headers;
 import io.github.jungm.crema.internal.http.HttpReply;
+import io.github.jungm.crema.internal.http.HttpRequest;
 import io.github.jungm.crema.internal.http.McpTransport;
 import io.github.jungm.crema.internal.model.McpServerModel;
 import io.github.jungm.crema.internal.json.Json;
@@ -275,12 +279,16 @@ class CremaExtensionTest {
         String body = "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"" + method + "\",\"params\":{\"_meta\":{"
                 + "\"io.modelcontextprotocol/protocolVersion\":\"2026-07-28\","
                 + "\"io.modelcontextprotocol/clientCapabilities\":{}}" + params + "}}";
-        Map<String, String> headers = name == null
-                ? Map.of("MCP-Protocol-Version", "2026-07-28", "Mcp-Method", method)
-                : Map.of("MCP-Protocol-Version", "2026-07-28", "Mcp-Method", method, "Mcp-Name", name);
-        McpTransport.Plan plan = transport.plan(server, body.getBytes(StandardCharsets.UTF_8),
-                header -> headers.containsKey(header) ? List.of(headers.get(header)) : List.of(), Caller.ANONYMOUS);
-        return transport.respond(server, ((McpTransport.Respond) plan).request(), Caller.ANONYMOUS);
+        Map<String, List<String>> headers = name == null
+                ? Map.of("MCP-Protocol-Version", List.of("2026-07-28"), "Mcp-Method", List.of(method))
+                : Map.of("MCP-Protocol-Version", List.of("2026-07-28"), "Mcp-Method", List.of(method), "Mcp-Name",
+                        List.of(name));
+        try {
+            return (HttpReply) transport.handle(server, HttpRequest.post(body.getBytes(StandardCharsets.UTF_8),
+                    Headers.of(headers)), Caller.ANONYMOUS);
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
     }
 
     private static JsonObject result(HttpReply reply) {

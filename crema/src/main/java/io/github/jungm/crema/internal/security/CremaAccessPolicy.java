@@ -14,6 +14,7 @@ import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+import java.util.regex.Pattern;
 
 import com.nimbusds.jose.JOSEException;
 import com.nimbusds.jose.KeySourceException;
@@ -21,15 +22,17 @@ import com.nimbusds.jose.jwk.source.RateLimitReachedException;
 import com.nimbusds.jose.proc.BadJOSEException;
 import com.nimbusds.jwt.JWTClaimsSet;
 
+import io.github.jungm.crema.internal.json.Json;
 import io.github.jungm.crema.internal.model.Feature;
 import io.github.jungm.crema.internal.model.FeatureMethod;
 import io.github.jungm.crema.internal.model.McpServerModel;
-import io.github.jungm.crema.internal.json.Json;
+import io.github.jungm.crema.internal.protocol.Rejection;
 import jakarta.json.JsonObject;
 
 /**
- * Crema's {@link AccessPolicy}: role checks with {@code @RolesAllowed}, {@code @PermitAll} and {@code @DenyAll}
- * for every MCP Server, and bearer tokens for protected MCP Servers.
+ * Decides who may use the MCP Servers of an application and their Features: role checks with
+ * {@code @RolesAllowed}, {@code @PermitAll} and {@code @DenyAll} for every MCP Server, and bearer tokens for
+ * protected MCP Servers.
  * <ul>
  * <li>On an open MCP Server the caller and its roles are the Runtime's.</li>
  * <li>On a protected MCP Server every request needs a bearer token that {@link TokenValidator} accepts, and the
@@ -38,10 +41,17 @@ import jakarta.json.JsonObject;
  * token was rejected is logged, never returned.</li>
  * </ul>
  */
-public final class CremaAccessPolicy implements AccessPolicy, Closeable {
+public final class CremaAccessPolicy implements Closeable {
 
-    static final String AUTHORIZATION = "Authorization";
-    static final String WWW_AUTHENTICATE = "WWW-Authenticate";
+    private static final String WWW_AUTHENTICATE = "WWW-Authenticate";
+    private static final String BEARER = "Bearer";
+
+    /**
+     * The syntax of RFC 6750 §2.1 {@code b64token}: the only characters a bearer token may have. A value with
+     * whitespace or anything else, such as two tokens or two joined {@code Authorization} headers, is invalid.
+     * This checks the header's syntax only; the token itself is parsed and validated by Nimbus.
+     */
+    private static final Pattern B64TOKEN = Pattern.compile("[A-Za-z0-9\\-._~+/]+=*");
 
     private static final Logger LOG = Logger.getLogger(CremaAccessPolicy.class.getName());
 
@@ -68,7 +78,8 @@ public final class CremaAccessPolicy implements AccessPolicy, Closeable {
     /**
      * Builds the policy of an application's MCP Servers.
      *
-     * @param protections the protection of each protected MCP Server, by {@code McpApplication} subclass
+     * @param protections the protection of each protected MCP Server, by {@code McpApplication} subclass; MCP
+     *        Servers without one are open
      */
     public static Result create(List<McpServerModel> servers, Map<Class<?>, Protection> protections) {
         return create(servers, protections, TokenValidator.Tuning.DEFAULT);
@@ -98,74 +109,85 @@ public final class CremaAccessPolicy implements AccessPolicy, Closeable {
         return new Result(policy, List.copyOf(problems));
     }
 
-    @Override
-    public Admission authenticate(McpServerModel server, Caller caller) {
+    /**
+     * Checks a request before any MCP processing, after the {@code Origin} check, and determines the caller that
+     * the rest of the request is processed for.
+     *
+     * @param caller the caller according to the Runtime
+     * @param authorization the values of the request's {@code Authorization} header; empty when absent
+     * @return the caller to process the request for: {@code caller} on an open MCP Server, the token's caller on a
+     *         protected one
+     * @throws Rejection a {@code 401} challenge
+     */
+    public Caller authenticate(McpServerModel server, Caller caller, List<String> authorization) {
         ServerAccess access = access(server);
         if (access.protection() == null) {
-            return new Admitted(caller);
-        }
-        if (caller instanceof TokenCaller tokenCaller && tokenCaller.isFor(server.application())) {
-            return new Admitted(caller);
+            return caller;
         }
         String metadata = access.protection().resourceMetadataUrl();
-        List<String> authorization = caller.header(AUTHORIZATION);
         if (authorization.isEmpty()) {
-            return challenge(metadata, null);
+            throw challenge(metadata, null);
         }
         if (authorization.size() > 1) {
             LOG.fine(() -> "Rejected a request to MCP Server '" + access.protection().server()
                     + "' with more than one Authorization header");
-            return challenge(metadata, "invalid_token");
+            throw challenge(metadata, "invalid_token");
         }
         String value = authorization.get(0).strip();
         int space = value.indexOf(' ');
         String scheme = space < 0 ? value : value.substring(0, space);
-        if (!scheme.equalsIgnoreCase(TokenSecurityContext.BEARER)) {
-            return challenge(metadata, null);
+        if (!scheme.equalsIgnoreCase(BEARER)) {
+            throw challenge(metadata, null);
         }
-        String token = space < 0 ? "" : value.substring(space + 1).strip();
-        return validate(server, access, caller, token)
-                .<Admission>map(Admitted::new)
-                .orElseGet(() -> challenge(metadata, "invalid_token"));
+        String token = space < 0 ? "" : value.substring(space + 1).stripLeading();
+        return validate(server, access, token).orElseThrow(() -> challenge(metadata, "invalid_token"));
     }
 
-    @Override
+    /**
+     * Whether the caller may use a Feature or Completion Method. Features that aren't permitted are omitted from
+     * lists.
+     *
+     * @param caller a caller {@link #authenticate admitted} for this MCP Server
+     */
     public boolean permits(McpServerModel server, Feature feature, Caller caller) {
         ServerAccess access = access(server);
         if (access.protection() != null
                 && !(caller instanceof TokenCaller tokenCaller && tokenCaller.isFor(server.application()))) {
             return false;
         }
-        AccessRule rule = access.rules().get(feature.method());
-        if (rule == null) {
-            rule = AccessRule.of(feature.method().method(),
-                    AccessRule.ofApplication(server.application(), new ArrayList<>()), new ArrayList<>());
-        }
-        return rule.permits(caller);
-    }
-
-    @Override
-    public Rejection forbidden(McpServerModel server, Caller caller) {
-        ServerAccess access = access(server);
-        if (access.protection() == null) {
-            return new Rejection(403, Map.of());
-        }
-        return new Rejection(403, Map.of(WWW_AUTHENTICATE,
-                "Bearer error=\"insufficient_scope\", resource_metadata=\""
-                        + access.protection().resourceMetadataUrl() + "\""));
+        return access.rules().get(feature.method()).permits(caller);
     }
 
     /**
-     * Private if the MCP Server is protected, if any of its Features is restricted to roles, or if the caller is
-     * authenticated, by the Runtime or by a token; public otherwise.
+     * The rejection of a request that invokes a Feature the caller may not use: {@code 403}, with an
+     * {@code insufficient_scope} challenge on a protected MCP Server.
      */
-    @Override
+    public Rejection forbidden(McpServerModel server) {
+        ServerAccess access = access(server);
+        if (access.protection() == null) {
+            return new Rejection(403, Map.of(), null);
+        }
+        return new Rejection(403, Map.of(WWW_AUTHENTICATE,
+                "Bearer error=\"insufficient_scope\", resource_metadata=\""
+                        + access.protection().resourceMetadataUrl() + "\""), null);
+    }
+
+    /**
+     * Whether a result for this caller may depend on who the caller is, which makes its {@code cacheScope}
+     * {@code private}: if the MCP Server is protected, if any of its Features is restricted to roles, or if the
+     * caller is authenticated, by the Runtime or by a token.
+     *
+     * @param caller a caller {@link #authenticate admitted} for this MCP Server
+     */
     public boolean isPrivate(McpServerModel server, Caller caller) {
         return access(server).isPrivate() || caller instanceof TokenCaller
                 || CallerPrincipal.safely(caller::principal) != null;
     }
 
-    @Override
+    /**
+     * The Protected Resource Metadata (RFC 9728) of a protected MCP Server; empty for other MCP Servers. It
+     * doesn't depend on the request.
+     */
     public Optional<JsonObject> resourceMetadata(McpServerModel server) {
         ServerAccess access = access(server);
         if (access.protection() == null) {
@@ -195,16 +217,20 @@ public final class CremaAccessPolicy implements AccessPolicy, Closeable {
         }
     }
 
-    private Optional<Caller> validate(McpServerModel server, ServerAccess access, Caller caller, String token) {
+    private Optional<Caller> validate(McpServerModel server, ServerAccess access, String token) {
         Protection protection = access.protection();
-        String resource = protection.resource();
         if (token.isEmpty()) {
             LOG.fine(() -> "Rejected a request to MCP Server '" + protection.server() + "': empty bearer token");
             return Optional.empty();
         }
+        if (!B64TOKEN.matcher(token).matches()) {
+            LOG.fine(() -> "Rejected a request to MCP Server '" + protection.server() + "': the bearer token has "
+                    + "characters outside the RFC 6750 b64token syntax, such as whitespace");
+            return Optional.empty();
+        }
         JWTClaimsSet claims;
         try {
-            claims = access.validator().validate(token, resource);
+            claims = access.validator().validate(token);
         } catch (RateLimitReachedException e) {
             LOG.fine(() -> "Rejected a bearer token for MCP Server '" + protection.server() + "': no key of issuer "
                     + protection.issuer() + " matches it, and the keys were retrieved too recently to retrieve "
@@ -216,7 +242,7 @@ public final class CremaAccessPolicy implements AccessPolicy, Closeable {
             return Optional.empty();
         } catch (ParseException | BadJOSEException | JOSEException e) {
             LOG.fine(() -> "Rejected a bearer token for MCP Server '" + protection.server() + "' (resource "
-                    + resource + "): " + LogText.clean(e.getMessage()));
+                    + protection.resource() + "): " + LogText.clean(e.getMessage()));
             return Optional.empty();
         } catch (RuntimeException e) {
             failure(access, "validating it failed: " + e.getClass().getName() + ": " + LogText.clean(e.getMessage()));
@@ -229,7 +255,7 @@ public final class CremaAccessPolicy implements AccessPolicy, Closeable {
                     + "': its principal claim " + protection.principalClaim() + " isn't a non-empty string");
             return Optional.empty();
         }
-        return Optional.of(new TokenCaller(server.application(), caller, new CallerPrincipal(principal, values),
+        return Optional.of(new TokenCaller(server.application(), new CallerPrincipal(principal, values),
                 TokenCaller.roles(TokenCaller.claim(values, protection.rolesClaim()))));
     }
 
@@ -255,8 +281,9 @@ public final class CremaAccessPolicy implements AccessPolicy, Closeable {
         return access;
     }
 
-    private static Rejected challenge(String metadataUrl, String error) {
-        return new Rejected(new Rejection(401, Map.of(WWW_AUTHENTICATE, "Bearer "
-                + (error == null ? "" : "error=\"" + error + "\", ") + "resource_metadata=\"" + metadataUrl + "\"")));
+    private static Rejection challenge(String metadataUrl, String error) {
+        return new Rejection(401, Map.of(WWW_AUTHENTICATE, BEARER + " "
+                + (error == null ? "" : "error=\"" + error + "\", ") + "resource_metadata=\"" + metadataUrl + "\""),
+                null);
     }
 }

@@ -63,7 +63,7 @@ choosing the definition the way the conformance suite's `wire-schema-valid` chec
 | `TransportIT` | same | the check order of protocol-notes G6 (`-32700`, `-32600`, missing headers `-32020`, missing `_meta` fields `-32602` with 400, header mismatch incl. case and Base64 sentinel, `-32022` with `data`, `404`/`-32601` incl. removed methods); `GET`/`DELETE` 405; notifications 202; `Origin` 403 incl. the DNS-rebinding `Host`/`Origin` pair; cursors; `Mcp-Session-Id`; `crema.max-request-bytes` 413; matrix parameters |
 | `ConfigurationIT` | `/mcp` with `META-INF/microprofile-config.properties` | `title`, `version` and `instructions` from MP Config override `@McpServerInfo`, unconfigured attributes keep the annotated value; `crema.cache.list-ttl-ms` on `server/discover` and lists; `crema.origin.allowed` admits listed origins and still refuses others |
 | `DeploymentFailureIT` | one WAR per flaw, plus a valid control | duplicate Tool names, a Feature for an undeclared MCP Server, an `McpApplication` overriding `getClasses()`, two `McpApplication`s for one MCP Server, an unsupported Prompt return type, template variables not matching parameters |
-| `CoexistenceIT` | `/mcp` next to the application's scanning `Application` at `/api` with its own `@Path("")` root resource, a snake_case `ContextResolver<Jsonb>`, an `ExceptionMapper<Throwable>` and a header-adding `ContainerResponseFilter` | the root resource still serves `GET`/`POST /api/`; the MCP wire format, JSON-B naming, errors, SSE and headers are untouched by the application's providers |
+| `CoexistenceIT` | `/mcp` next to the application's scanning `Application` at `/api` with its own `@Path("")` root resource, a snake_case `ContextResolver<Jsonb>`, an `ExceptionMapper<Throwable>`, a header-adding `ContainerResponseFilter`, a post-matching `ContainerRequestFilter` that answers `401` without the application's key, and a `@PreMatching` one that answers `451` to a header; a `@RequestScoped` Feature bean with an interceptor binding | the root resource still serves `GET`/`POST /api/` and the application's filters apply there; the MCP wire format, JSON-B naming, errors, SSE and headers are untouched by the application's providers and filters; the request scope is active for the Feature Method and its interceptor; `OPTIONS` on the MCP Endpoint; other paths below it are `404` |
 | `ConformanceIT` | the fixtures of protocol-notes "Test tooling" | `npx @modelcontextprotocol/conformance@0.2.0-alpha.11 server --requirements 2026-07-28 --expected-failures src/test/conformance/baseline-2026-07-28.yml` must exit 0; output in `target/conformance/<runtime>/` |
 
 The conformance baseline holds only what Crema doesn't support by design: the 12 MRTR scenarios (two of them end
@@ -73,9 +73,24 @@ scored scenarios pass on every Runtime.
 ### Runtime notes
 
 - TomEE hands the providers that the application's scanning `Application` discovers to every `Application` of the
-  WAR, including `McpApplication`s. Crema therefore writes MCP responses straight to the servlet response and commits
-  them; a servlet filter on the MCP paths then drops the status and headers JAX-RS still sets (Liberty would log
-  SRVE8115W for each request otherwise).
+  WAR, including `McpApplication`s. Crema therefore serves every request to an `McpApplication` in its own
+  `@PreMatching` filter with the highest priority, writes the response straight to the servlet response, commits it
+  and aborts the request; a servlet filter on the MCP paths then drops the status and headers JAX-RS still sets
+  (Liberty would log SRVE8115W for each request otherwise). The findings of `CoexistenceIT`, the same on every
+  Runtime:
+
+  | Application provider | On MCP requests |
+  |---|---|
+  | post-matching `ContainerRequestFilter` (answers `401` without the application's key) | never runs: MCP answers `200` |
+  | `@PreMatching` `ContainerRequestFilter` with default priority (answers `451` to `X-App-Block`) | never runs: MCP answers `200` (on TomEE it applies to the `McpApplication`, but Crema's filter comes first and aborts the request) |
+  | `ContainerResponseFilter`, `ExceptionMapper`, `ContextResolver<Jsonb>` | no effect on the committed response |
+
+  `OPTIONS` on the MCP Endpoint answers `405` with `Allow: POST` and no `Access-Control-*` headers (a preflight with a
+  foreign `Origin` gets the `Origin` check's `403` first); Crema answers no CORS preflights.
+- TomEE routes a request to an `Application` only if a resource of it could match the path, so `McpApplication`
+  registers a placeholder resource at `@Path("")`, whose only method sits below a path that matches nothing. With a
+  resource elsewhere (for example a path that is a never-matching regular expression) TomEE answers the MCP Endpoint
+  with Tomcat's `404`.
 - TomEE ignores the application's `ContextResolver<Jsonb>` once another WAR on the same server has used JSON-B
   through JAX-RS; `CoexistenceIT` records that instead of failing. Johnzon (TomEE) writes `BigDecimal` and
   `BigInteger` as JSON strings by default; Crema's own `Jsonb` switches that off.
@@ -89,19 +104,25 @@ scored scenarios pass on every Runtime.
 `ProtectedMcpServerIT` deploys one WAR (built by `SecurityWar`, with Crema, Nimbus and the MCP server API in
 `WEB-INF/lib`) containing:
 
-- `/mcp`: a protected MCP Server (`@RolesAllowed("user")` on its `McpApplication`), with Features for role `user`,
-  role `admin`, `@PermitAll`, and one that reports its `McpCaller` and `Principal`.
+- `/mcp`: a protected MCP Server (`@RolesAllowed("user")` on its `McpApplication`), with Tools for role `user`,
+  role `admin`, `@PermitAll`, one that reports its `McpCaller` and `Principal`, and an `admin` Tool that reports
+  `Progress`; an `admin` Resource, Prompt and Completion Method.
+- `/denied`: a protected MCP Server whose `McpApplication` carries `@DenyAll`, with one Tool that inherits it and one
+  that is `@PermitAll`.
 - `/open`: an open MCP Server with an unrestricted Feature and a `@RolesAllowed("admin")` one.
 - `/api`: a scanning JAX-RS application without MP-JWT or role constraints; its resource reports the Runtime's caller.
 - `/ui`: a servlet with `@ServletSecurity(@HttpConstraint(rolesAllowed = "user"))`, protected by
   `@OpenIdAuthenticationMechanismDefinition` whose `providerURI` comes from MP Config through EL.
-- `META-INF/microprofile-config.properties`: `crema.default-server.issuer` and the OIDC provider URI, both the fake
-  Authorization Server, and `crema.default-server.resource` = `https://mcp.example.test/security/mcp`, a public URL
-  as behind a reverse proxy, which differs from the URL the tests send requests to.
+- `META-INF/microprofile-config.properties`: `crema.default-server.issuer`, `crema.servers.denied.issuer` and the
+  OIDC provider URI, all the fake Authorization Server, and `crema.default-server.resource` =
+  `https://mcp.example.test/security/mcp` (`…/denied` for `/denied`), a public URL as behind a reverse proxy, which
+  differs from the URL the tests send requests to.
 
 The fake Authorization Server runs in the test JVM on a loopback port: OpenID Connect discovery, a JWK set that the
-tests rotate, and an authorization endpoint. Tests mint tokens with Nimbus' signers. The WAR needs nothing
-Runtime-specific, and no Runtime security configuration.
+tests rotate, and an authorization endpoint. It is the one the unit tests of `crema` use
+(`io.github.jungm.crema.testkit.FakeAuthorizationServer`, from `crema`'s test-jar). Tests mint tokens with Nimbus'
+signers. The WAR needs nothing Runtime-specific, and no Runtime security configuration. MCP traffic goes through
+`McpClient`, so every MCP message of these tests is validated against `schema.json` as well.
 
 ### Findings
 
@@ -111,11 +132,15 @@ TomEE 10.2.0, WildFly 41.0.1, Open Liberty 26.0.0.9 and WebSphere Liberty 26.0.0
 |---|-------|-------------------------|
 | 1 | WAR with a protected MCP Server and the OIDC mechanism deploys | Yes. |
 | 2 | `/mcp` without token (`POST` and `GET`) | Crema's `401`, `WWW-Authenticate: Bearer resource_metadata="<resource>/.well-known/oauth-protected-resource"`, empty body. |
-| 3 | `/mcp` with an expired, not-yet-valid, wrong-issuer, wrong-audience (the request URL, the open MCP Server's, the API's), foreign-key, `alg: none`, HS256-with-the-public-key or malformed token | Crema's `401` with `error="invalid_token"` and `resource_metadata`, empty body. No Runtime `401`. |
+| 3 | `/mcp` with an expired, not-yet-valid, wrong-issuer, wrong-audience (the request URL, the open MCP Server's, the `@DenyAll` MCP Server's, the API's), principal-less, foreign-key, `alg: none`, HS256-with-the-public-key or malformed token | Crema's `401` with `error="invalid_token"` and `resource_metadata`, empty body. No Runtime `401`. |
+| 3a | `Authorization: Basic …`, or an empty `Authorization` | `401` challenge without `error`, as without token. |
+| 3b | `Bearer` without token, two tokens in one header, or `Authorization` sent twice | `401` with `error="invalid_token"`: every Runtime passes both header fields on (or joins them), and neither is one RFC 6750 `b64token`. |
 | 4 | `/mcp` with a valid token | `200`; `tools/list` holds only the permitted Tools, with `cacheScope: private`; the Feature Method sees `alice` and the token's claims. |
-| 5 | Valid token without the Feature's role | `403`, `WWW-Authenticate: Bearer error="insufficient_scope", resource_metadata="…"`. |
+| 5 | Valid token without the Feature's role: `tools/call`, `resources/read`, `prompts/get`, `completion/complete` | `403`, `WWW-Authenticate: Bearer error="insufficient_scope", resource_metadata="…"`, empty body. |
+| 5a | Valid token without the role of a Tool that takes `Progress`, called with a `progressToken` | the same `403`, not an SSE stream; with the role, an SSE stream. |
+| 5b | `/denied` (`@DenyAll` McpApplication) with a valid token for it | `tools/list` holds only the `@PermitAll` Tool; the other one answers `403` with `insufficient_scope`; a token for `/mcp` gets `401`. |
 | 6 | Token signed with a key published after the first request | `200`: Nimbus refreshes the JWK set for the unknown `kid`. |
-| 7 | `GET <base>/mcp/.well-known/oauth-protected-resource` with a foreign `Origin` | `200` JSON with `resource` = the configured `resource`, `authorization_servers` and `bearer_methods_supported`. `404` for the open MCP Server. |
+| 7 | `GET <base>/mcp/.well-known/oauth-protected-resource` with a foreign `Origin` | `200` JSON with `resource` = the configured `resource`, `authorization_servers` and `bearer_methods_supported`. `404` for the open MCP Server, `405` for `POST`, `404` for other paths below the MCP Endpoint. |
 | 8 | `/open` anonymous; with a bearer token | Runtime caller, anonymous: the `admin` Tool is hidden and answers `403` without `WWW-Authenticate`. A bearer token doesn't change the caller. |
 | 9 | `/ui` without login | `302` to the Authorization Server's authorization endpoint. |
 | 10 | `/api` without token; with an MCP token | `200` and anonymous in both cases: the Runtime ignores bearer tokens and doesn't see Crema's token callers. |

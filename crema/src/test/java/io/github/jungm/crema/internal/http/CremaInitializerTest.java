@@ -79,9 +79,8 @@ class CremaInitializerTest {
     @Test
     void applicationNamesItsSubclass() {
         Plain application = new Plain();
-        assertEquals(Map.of(McpApplication.APPLICATION_PROPERTY, Plain.class), application.getProperties());
-        assertEquals(Set.of(McpEndpoint.class, McpEndpointFilter.class, ResourceMetadataEndpoint.class),
-                application.getClasses());
+        assertEquals(Map.of(McpEndpointFilter.APPLICATION_PROPERTY, Plain.class), application.getProperties());
+        assertEquals(Set.of(McpEndpoint.class, McpEndpointFilter.class), application.getClasses());
     }
 
     @jakarta.ws.rs.ApplicationPath("mcp/admin/")

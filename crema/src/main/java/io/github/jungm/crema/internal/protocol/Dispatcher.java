@@ -12,7 +12,6 @@ import io.github.jungm.crema.internal.json.Json;
 import io.github.jungm.crema.internal.json.ProtocolJson;
 import io.github.jungm.crema.internal.model.Feature;
 import io.github.jungm.crema.internal.model.McpServerModel;
-import io.github.jungm.crema.internal.security.AccessPolicy.RejectedException;
 import io.github.jungm.crema.internal.security.Caller;
 import jakarta.json.JsonObject;
 import jakarta.json.JsonObjectBuilder;
@@ -56,9 +55,10 @@ public final class Dispatcher {
 
     /**
      * Whether a request is answered with an SSE stream: it invokes a Feature Method that takes {@link
-     * org.mcpjava.server.progress.Progress} and carries a {@code progressToken}.
+     * org.mcpjava.server.progress.Progress} and carries a {@code progressToken}. The caller's access to that
+     * Feature is checked here, before the stream starts, so that {@link #handle} never rejects a streamed request.
      *
-     * @throws RejectedException if the caller may not use that Feature
+     * @throws Rejection if the caller may not use that Feature
      */
     public boolean streams(McpServerModel server, Request request, Caller caller) {
         if (ProgressTokenImpl.of(request.meta()).isEmpty()) {
@@ -69,16 +69,16 @@ public final class Dispatcher {
             return false;
         }
         if (!services.access().permits(server, target.get(), caller)) {
-            throw new RejectedException(services.access().forbidden(server, caller));
+            throw services.access().forbidden(server);
         }
         return true;
     }
 
     /**
-     * Handles a request. JSON-RPC errors come back as the HTTP status and error response to send.
+     * Handles a request. JSON-RPC errors come back as the HTTP status and error response to send. Any other
+     * failure propagates to the transport, which answers it as a last resort.
      *
-     * @throws RejectedException if the request must be answered with a {@link
-     *         io.github.jungm.crema.internal.security.AccessPolicy.Rejection}
+     * @throws Rejection if the caller may not use the Feature the request invokes
      */
     public Response handle(McpServerModel server, Request request, Caller caller, ProgressChannel progress) {
         Function<Call, JsonObject> handler = HANDLERS.get(request.method());
@@ -90,14 +90,6 @@ public final class Dispatcher {
             return new Response(200, envelope(request.id()).add("result", complete(result, server)).build());
         } catch (McpError e) {
             return error(request.id(), e);
-        } catch (RejectedException e) {
-            throw e;
-        } catch (RuntimeException | Error e) {
-            if (e instanceof VirtualMachineError error) {
-                throw error;
-            }
-            LOG.log(Level.WARNING, "Handling " + request.method() + " failed", e);
-            return error(request.id(), McpError.internal("Internal error"));
         }
     }
 
@@ -109,6 +101,22 @@ public final class Dispatcher {
 
     public static McpError methodNotFound(String method) {
         return new McpError(McpError.METHOD_NOT_FOUND, "Method not found: " + method, null, 404);
+    }
+
+    /**
+     * The one place that handles an unexpected failure: a {@link VirtualMachineError} is rethrown; anything else is
+     * logged as a warning with its stack trace, and answered with a {@code -32603} error that reveals nothing
+     * about it.
+     *
+     * @param what what failed, for the log, such as the Feature Method
+     * @return the error to answer with
+     */
+    public static McpError internalError(String what, Throwable failure) {
+        if (failure instanceof VirtualMachineError error) {
+            throw error;
+        }
+        LOG.log(Level.WARNING, what + " failed", failure);
+        return McpError.internal("Internal error");
     }
 
     /**

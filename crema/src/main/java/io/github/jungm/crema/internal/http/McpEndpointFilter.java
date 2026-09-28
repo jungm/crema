@@ -2,35 +2,44 @@ package io.github.jungm.crema.internal.http;
 
 import java.io.IOException;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
-import java.util.function.Function;
 
-import io.github.jungm.crema.internal.security.Caller;
-import io.github.jungm.crema.internal.security.TokenSecurityContext;
+import io.github.jungm.crema.internal.model.McpServerModel;
+import jakarta.annotation.Priority;
 import jakarta.servlet.http.HttpServletResponse;
-import jakarta.ws.rs.HttpMethod;
 import jakarta.ws.rs.container.ContainerRequestContext;
 import jakarta.ws.rs.container.ContainerRequestFilter;
 import jakarta.ws.rs.container.PreMatching;
 import jakarta.ws.rs.core.Configuration;
 import jakarta.ws.rs.core.Context;
-import jakarta.ws.rs.core.HttpHeaders;
-import jakarta.ws.rs.core.MultivaluedMap;
+import jakarta.ws.rs.core.PathSegment;
 import jakarta.ws.rs.core.Response;
 import jakarta.ws.rs.core.UriInfo;
 
 /**
- * Handles every request to the MCP Endpoint before resource matching: the {@code Origin} check and
- * authentication, {@code 405} for anything but {@code POST}, and reading and validating a {@code POST}. It answers
- * rejected and invalid requests itself, writing to the servlet response directly (see {@link JaxRs#write}). A
- * request admitted for a bearer token caller gets a {@link TokenSecurityContext} for the rest of its JAX-RS
- * processing. A valid {@code POST} is handed to {@link McpEndpoint} as a request property, with
- * {@code Content-Type} set to {@link McpEndpoint#PLANNED}, which only {@code McpEndpoint} consumes. Only
- * {@code McpApplication}s register this filter.
+ * Serves every request to an {@code McpApplication}, before resource matching and ahead of any other request
+ * filter:
+ * <ul>
+ * <li>the MCP Endpoint, the application path itself, through {@link McpTransport}: the checks, reading and
+ * validating the request, and executing it, with one JSON response or an SSE stream;</li>
+ * <li>{@code <MCP Endpoint>/.well-known/oauth-protected-resource}, the Protected Resource Metadata;</li>
+ * <li>{@code 404} for any other path.</li>
+ * </ul>
+ * The response is written straight to the servlet response and committed (see {@link JaxRs#write}), and the
+ * request is aborted, so no resource method, post-matching filter, exception mapper or message body writer runs
+ * for it, whether Crema's or the application's. The CDI request context is active throughout, since the servlet
+ * request is. Only {@code McpApplication}s register this filter.
  */
 @PreMatching
+@Priority(Integer.MIN_VALUE)
 public class McpEndpointFilter implements ContainerRequestFilter {
+
+    /**
+     * The {@code Application} property that holds the {@code McpApplication} subclass serving a request.
+     */
+    public static final String APPLICATION_PROPERTY = "io.github.jungm.crema.application";
+
+    private static final List<String> METADATA_PATH = List.of(".well-known", "oauth-protected-resource");
 
     @Context
     private Configuration configuration;
@@ -40,51 +49,41 @@ public class McpEndpointFilter implements ContainerRequestFilter {
 
     @Override
     public void filter(ContainerRequestContext request) throws IOException {
-        if (!isEndpoint(request.getUriInfo())) {
-            return;
-        }
         Optional<JaxRs.Target> target = JaxRs.target(configuration);
         if (target.isEmpty()) {
-            abort(request, new HttpReply(503, Map.of(), null));
+            answer(request, HttpReply.empty(503));
             return;
         }
         McpTransport transport = target.get().transport();
-        Function<String, List<String>> headers = JaxRs.headers(request.getHeaders());
-        McpTransport.Screening screening = transport.screen(target.get().server(), JaxRs.first(headers, "Origin"),
-                JaxRs.caller(request.getSecurityContext(), headers));
-        if (screening instanceof McpTransport.Reply rejected) {
-            abort(request, rejected.reply());
-            return;
+        McpServerModel server = target.get().server();
+        List<String> path = path(request.getUriInfo());
+        if (path.isEmpty()) {
+            McpTransport.Outcome outcome = transport.handle(server, new HttpRequest(request.getMethod(),
+                    Headers.of(request.getHeaders()), request.getLength(), request.getEntityStream()),
+                    JaxRs.caller(request.getSecurityContext()));
+            if (outcome instanceof McpTransport.Stream stream) {
+                stream.writeTo(JaxRs.eventStream(servletResponse));
+                request.abortWith(Response.ok().build());
+            } else {
+                answer(request, (HttpReply) outcome);
+            }
+        } else if (path.equals(METADATA_PATH)) {
+            answer(request, transport.resourceMetadata(server, request.getMethod()));
+        } else {
+            answer(request, HttpReply.empty(404));
         }
-        Caller caller = ((McpTransport.Admitted) screening).caller();
-        TokenSecurityContext.replacing(request.getSecurityContext(), caller).ifPresent(request::setSecurityContext);
-        if (!HttpMethod.POST.equals(request.getMethod())) {
-            abort(request, new HttpReply(405, Map.of(HttpHeaders.ALLOW, HttpMethod.POST), null));
-            return;
-        }
-        McpTransport.Plan plan = transport.plan(target.get().server(), request.getEntityStream(),
-                request.getLength(), headers, caller);
-        if (plan instanceof McpTransport.Reply reply) {
-            abort(request, reply.reply());
-            return;
-        }
-        request.setProperty(McpEndpoint.PLAN_PROPERTY, new McpEndpoint.Planned(transport, target.get().server(),
-                plan, caller));
-        MultivaluedMap<String, String> requestHeaders = request.getHeaders();
-        requestHeaders.keySet().removeIf(HttpHeaders.CONTENT_TYPE::equalsIgnoreCase);
-        requestHeaders.putSingle(HttpHeaders.CONTENT_TYPE, McpEndpoint.PLANNED);
     }
 
     /**
-     * Whether a request addresses the MCP Endpoint, the application path itself: every path segment is empty,
-     * whatever matrix parameters it carries ({@code /mcp}, {@code /mcp/}, {@code /mcp/;x=1}), which is what
-     * {@code @Path("")} matches.
+     * The path of a request below the application path, without empty segments: empty for the MCP Endpoint
+     * itself, whatever matrix parameters it carries ({@code /mcp}, {@code /mcp/}, {@code /mcp/;x=1}).
      */
-    static boolean isEndpoint(UriInfo uriInfo) {
-        return uriInfo.getPathSegments().stream().allMatch(segment -> segment.getPath().isEmpty());
+    static List<String> path(UriInfo uriInfo) {
+        return uriInfo.getPathSegments().stream().map(PathSegment::getPath).filter(segment -> !segment.isEmpty())
+                .toList();
     }
 
-    private void abort(ContainerRequestContext request, HttpReply reply) throws IOException {
+    private void answer(ContainerRequestContext request, HttpReply reply) throws IOException {
         JaxRs.write(servletResponse, reply);
         request.abortWith(Response.status(reply.status()).build());
     }

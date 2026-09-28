@@ -21,7 +21,6 @@ import io.github.jungm.crema.internal.TestDeployment;
 import io.github.jungm.crema.internal.invoke.ProgressChannel;
 import io.github.jungm.crema.internal.json.Json;
 import io.github.jungm.crema.internal.model.McpServerModel;
-import io.github.jungm.crema.internal.security.AccessPolicy;
 import io.github.jungm.crema.internal.security.Caller;
 import jakarta.json.JsonObject;
 import jakarta.json.JsonObjectBuilder;
@@ -94,9 +93,10 @@ class InvocationsTest {
         }
     }
 
-    private static final Dispatcher DISPATCHER = TestDeployment.create().dispatcher(AccessPolicy.PERMIT_ALL);
-    private static final McpServerModel SERVER = TestDeployment.create().application(App.class)
-            .bean(Features.class, new Features()).server(App.class);
+    private static final TestDeployment DEPLOYMENT = TestDeployment.create().application(App.class)
+            .bean(Features.class, new Features());
+    private static final McpServerModel SERVER = DEPLOYMENT.server(App.class);
+    private static final Dispatcher DISPATCHER = DEPLOYMENT.dispatcher();
 
     @Test
     void errorsFromToolsBecomeToolErrors() {

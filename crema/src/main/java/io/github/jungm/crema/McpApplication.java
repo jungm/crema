@@ -5,7 +5,6 @@ import java.util.Set;
 
 import io.github.jungm.crema.internal.http.McpEndpoint;
 import io.github.jungm.crema.internal.http.McpEndpointFilter;
-import io.github.jungm.crema.internal.http.ResourceMetadataEndpoint;
 import jakarta.ws.rs.core.Application;
 
 /**
@@ -17,7 +16,8 @@ import jakarta.ws.rs.core.Application;
  * public class OrderMcp extends McpApplication {}
  * </pre>
  * <p>
- * Only Crema's own resources and providers serve MCP traffic. Subclasses must not declare any methods, in particular
+ * Crema serves every request to this path itself, ahead of the application's JAX-RS filters, resources and
+ * providers, which therefore never apply to MCP traffic. Subclasses must not declare any methods, in particular
  * not override {@link #getClasses()}, {@link #getSingletons()} or {@link #getProperties()}; deployment fails if they
  * do. Features are exposed only through an {@code McpApplication}.
  * <p>
@@ -42,14 +42,21 @@ import jakarta.ws.rs.core.Application;
  * <li>{@code principal-claim}: the claim with the caller's name, {@code sub} by default;</li>
  * <li>{@code clock-skew-seconds}: the tolerated clock skew, {@code 60} by default.</li>
  * </ul>
- * Tokens must be JWTs signed with RSA or ECDSA. Their {@code typ} may be {@code at+jwt}, {@code JWT} or absent,
- * because many Authorization Servers don't issue {@code at+jwt} access tokens; that an ID token or other JWT of
- * the same Authorization Server isn't accepted as an access token relies on {@code resource}: a token is only
- * accepted if its audience contains this MCP Server's Resource Identifier.
+ * The {@code Authorization} header must hold exactly one {@code Bearer} token in the syntax of RFC 6750. Tokens
+ * must be JWTs signed with RSA or ECDSA. Their {@code typ} may be {@code at+jwt}, {@code JWT} or absent, because
+ * many Authorization Servers don't issue {@code at+jwt} access tokens; that an ID token or other JWT of the same
+ * Authorization Server isn't accepted as an access token relies on {@code resource}: a token is only accepted if its
+ * audience contains this MCP Server's Resource Identifier.
  * <p>
  * Its Protected Resource Metadata (RFC 9728) is served at {@code <MCP Endpoint>/.well-known/oauth-protected-resource}
  * and advertised to clients as {@code <resource>/.well-known/oauth-protected-resource}.
+ * <p>
  * On other MCP Servers, the caller and its roles are the ones the Runtime authenticated.
+ * <p>
+ * The Runtime doesn't know about bearer token callers: {@code @RolesAllowed} on EJBs, the Jakarta Security
+ * {@code SecurityContext} and CDI's built-in {@code Principal} bean don't see them. Feature Methods receive the
+ * caller as an Injected Parameter, {@link McpCaller} or {@link java.security.Principal}, and pass it on explicitly
+ * where it's needed.
  *
  * @see McpCaller
  * @see McpServerInfo
@@ -57,22 +64,32 @@ import jakarta.ws.rs.core.Application;
 public abstract class McpApplication extends Application {
 
     /**
-     * The {@link #getProperties() property} that holds the {@code McpApplication} subclass serving a request.
+     * Crema's own resource and request filter; the filter serves every request to this application.
+     * <p>
+     * Not {@code final}, like {@link #getSingletons()} and {@link #getProperties()}, because Liberty proxies
+     * {@code Application} subclasses as normal-scoped CDI beans, which requires overridable methods. Subclasses
+     * that override it fail deployment.
      */
-    public static final String APPLICATION_PROPERTY = "io.github.jungm.crema.application";
-
     @Override
     public Set<Class<?>> getClasses() {
-        return Set.of(McpEndpoint.class, McpEndpointFilter.class, ResourceMetadataEndpoint.class);
+        return Set.of(McpEndpoint.class, McpEndpointFilter.class);
     }
 
+    /**
+     * None. Not {@code final} for the reason given at {@link #getClasses()}; subclasses that override it fail
+     * deployment.
+     */
     @Override
     public Set<Object> getSingletons() {
         return Set.of();
     }
 
+    /**
+     * The property by which Crema's filter tells which MCP Server a request is for. Not {@code final} for the
+     * reason given at {@link #getClasses()}; subclasses that override it fail deployment.
+     */
     @Override
     public Map<String, Object> getProperties() {
-        return Map.of(APPLICATION_PROPERTY, getClass());
+        return Map.of(McpEndpointFilter.APPLICATION_PROPERTY, getClass());
     }
 }
