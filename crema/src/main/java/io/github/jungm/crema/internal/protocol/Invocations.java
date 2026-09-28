@@ -73,7 +73,9 @@ final class Invocations {
             response = ToolResponse.ofError("Invalid arguments for tool " + name + ": " + e.getMessage());
         } catch (McpException e) {
             response = ToolResponse.ofError(e.getMessage() != null ? e.getMessage() : "Tool " + name + " failed");
-        } catch (Exception e) {
+        } catch (VirtualMachineError e) {
+            throw e;
+        } catch (Throwable e) {
             LOG.log(Level.WARNING, "Tool " + name + " (" + tool.method() + ") failed", e);
             response = ToolResponse.ofError("Tool " + name + " failed with an internal error");
         }
@@ -198,12 +200,14 @@ final class Invocations {
             throw e;
         } catch (McpException e) {
             throw McpError.internal(e.getMessage() != null ? e.getMessage() : "Internal error");
-        } catch (Exception e) {
+        } catch (VirtualMachineError e) {
+            throw e;
+        } catch (Throwable e) {
             throw internal(feature, e);
         }
     }
 
-    private static McpError internal(Feature feature, Exception e) {
+    private static McpError internal(Feature feature, Throwable e) {
         LOG.log(Level.WARNING, feature.method() + " failed", e);
         return McpError.internal("Internal error");
     }
