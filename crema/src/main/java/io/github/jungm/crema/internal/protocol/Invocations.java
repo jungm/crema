@@ -86,7 +86,7 @@ final class Invocations {
         checkAccess(call, target.feature());
         var mapping = call.services().mapping();
         Object value = invoke(call, target.feature(), Invocation.fromStrings(target.variables(), mapping.binder()),
-                null, e -> McpError.internal("Invalid resource URI " + uri + ": " + e.getMessage()));
+                null);
         if (value == null) {
             throw notFound(uri);
         }
@@ -109,8 +109,12 @@ final class Invocations {
         checkAccess(call, prompt);
         Map<String, String> arguments = strings(call.optionalObject("arguments"), "Prompt arguments");
         var mapping = call.services().mapping();
-        Object value = invoke(call, prompt, Invocation.fromStrings(arguments, mapping.binder()), null,
-                e -> McpError.invalidParams("Invalid arguments for prompt " + name + ": " + e.getMessage()));
+        Object value;
+        try {
+            value = invoke(call, prompt, Invocation.fromStrings(arguments, mapping.binder()), null);
+        } catch (BindingException e) {
+            throw McpError.invalidParams("Invalid arguments for prompt " + name + ": " + e.getMessage());
+        }
         PromptResponse response;
         try {
             response = ReturnConversion.prompt(value);
@@ -161,9 +165,13 @@ final class Invocations {
         CompletionResult result = CompletionResult.builder().setHasMore(false).build();
         if (completion.isPresent()) {
             checkAccess(call, completion.get());
-            Object value = invoke(call, completion.get(),
-                    Invocation.fromStrings(Map.of(argumentName, argumentValue), call.services().mapping().binder()),
-                    new CompletionContextImpl(context), e -> McpError.invalidParams(e.getMessage()));
+            Object value;
+            try {
+                value = invoke(call, completion.get(), Invocation.fromStrings(Map.of(argumentName, argumentValue),
+                        call.services().mapping().binder()), new CompletionContextImpl(context));
+            } catch (BindingException e) {
+                throw McpError.invalidParams(e.getMessage());
+            }
             try {
                 result = ReturnConversion.completion(value);
             } catch (RuntimeException e) {
@@ -176,12 +184,18 @@ final class Invocations {
         return json.build();
     }
 
+    /**
+     * Invokes a Feature Method or Completion Method.
+     *
+     * @throws BindingException if an Argument is missing or can't be bound
+     * @throws McpError {@code -32603} if the method fails
+     */
     private static Object invoke(Call call, Feature feature, Function<Param.Argument, Object> arguments,
-            CompletionContextImpl context, Function<BindingException, McpError> bindingError) {
+            CompletionContextImpl context) {
         try {
             return call.invocation(context).invoke(feature.method(), arguments);
         } catch (BindingException e) {
-            throw bindingError.apply(e);
+            throw e;
         } catch (McpException e) {
             throw McpError.internal(e.getMessage() != null ? e.getMessage() : "Internal error");
         } catch (Exception e) {

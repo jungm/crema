@@ -78,22 +78,6 @@ public final class FeatureScanner {
     }
 
     /**
-     * Scans the methods a class declares or inherits, skipping overridden ones.
-     */
-    public FeatureScanner scan(Class<?> beanClass, InstanceSource instances) {
-        Set<String> seen = new HashSet<>();
-        for (Class<?> type = beanClass; type != null && type != Object.class; type = type.getSuperclass()) {
-            for (Method method : type.getDeclaredMethods()) {
-                if (!method.isBridge() && !method.isSynthetic()
-                        && seen.add(method.getName() + Arrays.toString(method.getParameterTypes()))) {
-                    scan(beanClass, method, instances);
-                }
-            }
-        }
-        return this;
-    }
-
-    /**
      * Scans one method; does nothing if it carries no Feature or completion annotation.
      */
     public FeatureScanner scan(Class<?> beanClass, Method method, InstanceSource instances) {

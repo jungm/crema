@@ -168,7 +168,7 @@ class FeatureScannerTest {
             public void tool() {
             }
         }
-        FeatureScanner scanner = scan(Bound.class).scan(Unbound.class, InstanceSource.of(null));
+        FeatureScanner scanner = Scanning.scan(scan(Bound.class), Unbound.class, null);
         Map<String, java.util.Set<String>> servers = new java.util.HashMap<>();
         scanner.features().forEach(f -> servers.put(f.name(), f.method().servers()));
         assertEquals(java.util.Set.of("a", "b"), servers.get("both"));
@@ -384,7 +384,7 @@ class FeatureScannerTest {
     }
 
     private static FeatureScanner scan(Class<?> type) {
-        return new FeatureScanner(MAPPING, IconLookup.reflective()).scan(type, InstanceSource.of(null));
+        return Scanning.scan(new FeatureScanner(MAPPING, IconLookup.reflective()), type, null);
     }
 
     private static void assertProblem(List<String> problems, String method, String text) {

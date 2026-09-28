@@ -25,7 +25,7 @@ import org.mcpjava.server.tools.ToolResponse;
 
 import io.github.jungm.crema.internal.bind.JsonbBridge;
 import io.github.jungm.crema.internal.json.ProtocolJson;
-import io.github.jungm.crema.internal.model.InstanceSource;
+import io.github.jungm.crema.internal.model.Scanning;
 import io.github.jungm.crema.internal.protocol.Json;
 import jakarta.json.JsonValue;
 
@@ -68,8 +68,8 @@ class ReturnConversionTest {
     }
 
     private static final ContentEncoders ENCODERS = new ContentEncoders(() -> List.of(
-            new ContentEncoders.Candidate(Shape.class, InstanceSource.of(new ShapeEncoder())),
-            new ContentEncoders.Candidate(null, InstanceSource.of(new CircleEncoder()))));
+            new ContentEncoders.Candidate(Shape.class, Scanning.instance(new ShapeEncoder())),
+            new ContentEncoders.Candidate(null, Scanning.instance(new CircleEncoder()))));
 
     @Test
     void toolValues() {

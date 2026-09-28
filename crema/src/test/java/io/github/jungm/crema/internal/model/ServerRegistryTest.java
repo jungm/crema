@@ -162,7 +162,7 @@ class ServerRegistryTest {
     private static ServerRegistry.Result build(List<ServerRegistry.Declaration> declarations, Class<?>... beans) {
         FeatureScanner scanner = new FeatureScanner(MAPPING, IconLookup.reflective());
         for (Class<?> bean : beans) {
-            scanner.scan(bean, InstanceSource.of(null));
+            Scanning.scan(scanner, bean, null);
         }
         assertEquals(List.of(), scanner.problems());
         return ServerRegistry.build(new ArrayList<>(declarations), scanner.features(), CremaSettings.defaults());

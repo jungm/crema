@@ -24,7 +24,7 @@ import io.github.jungm.crema.internal.invoke.ContentEncoders;
 import io.github.jungm.crema.internal.invoke.Mapping;
 import io.github.jungm.crema.internal.model.FeatureScanner;
 import io.github.jungm.crema.internal.model.IconLookup;
-import io.github.jungm.crema.internal.model.InstanceSource;
+import io.github.jungm.crema.internal.model.Scanning;
 import io.github.jungm.crema.internal.model.McpServerModel;
 import io.github.jungm.crema.internal.model.ServerRegistry;
 import io.github.jungm.crema.internal.protocol.Dispatcher;
@@ -375,9 +375,9 @@ class McpTransportTest {
 
     static McpTransport transport(CremaSettings settings, AccessPolicy access) {
         FeatureScanner scanner = new FeatureScanner(MAPPING, IconLookup.reflective());
-        scanner.scan(Fixtures.Tools.class, InstanceSource.of(new Fixtures.Tools()));
-        scanner.scan(Fixtures.Resources.class, InstanceSource.of(new Fixtures.Resources()));
-        scanner.scan(Fixtures.Prompts.class, InstanceSource.of(new Fixtures.Prompts()));
+        Scanning.scan(scanner, Fixtures.Tools.class, new Fixtures.Tools());
+        Scanning.scan(scanner, Fixtures.Resources.class, new Fixtures.Resources());
+        Scanning.scan(scanner, Fixtures.Prompts.class, new Fixtures.Prompts());
         assertEquals(List.of(), scanner.problems());
         ServerRegistry.Result result = ServerRegistry.build(List.of(new ServerRegistry.Declaration(TestApp.class,
                 ServerSettings.resolve(TestApp.class.getAnnotation(McpServerInfo.class), ConfigLookup.none(),
