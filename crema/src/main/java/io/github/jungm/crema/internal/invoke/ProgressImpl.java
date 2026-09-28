@@ -14,6 +14,7 @@ import org.mcpjava.server.progress.ProgressNotification;
 import org.mcpjava.server.progress.ProgressToken;
 import org.mcpjava.server.progress.ProgressTracker;
 
+import io.github.jungm.crema.internal.json.MetaKeys;
 import io.github.jungm.crema.internal.json.ProtocolJson;
 import io.github.jungm.crema.internal.json.Json;
 import io.github.jungm.crema.internal.protocol.Mcp;
@@ -98,14 +99,16 @@ public final class ProgressImpl implements Progress {
 
         @Override
         public ProgressNotification.Builder putMetadata(String key, Object value) {
-            metadata.put(Objects.requireNonNull(key, "key"), value);
+            metadata.put(MetaKeys.requireValid(key), value);
             return this;
         }
 
         @Override
         public ProgressNotification.Builder setMetadata(Map<String, Object> metadata) {
+            Map<String, Object> replacement = new LinkedHashMap<>();
+            metadata.forEach((key, value) -> replacement.put(MetaKeys.requireValid(key), value));
             this.metadata.clear();
-            this.metadata.putAll(metadata);
+            this.metadata.putAll(replacement);
             return this;
         }
 

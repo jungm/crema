@@ -1,15 +1,13 @@
 package io.github.jungm.crema.internal.model;
 
 import java.math.BigInteger;
-import java.util.Arrays;
 import java.util.HashSet;
-import java.util.List;
 import java.util.Set;
-import java.util.regex.Pattern;
 
 import org.mcpjava.server.MetaField;
 
 import io.github.jungm.crema.internal.json.Json;
+import io.github.jungm.crema.internal.json.MetaKeys;
 import jakarta.json.JsonException;
 import jakarta.json.JsonObject;
 import jakarta.json.JsonObjectBuilder;
@@ -19,11 +17,6 @@ import jakarta.json.JsonValue;
  * Turns {@link MetaField @MetaField} annotations into a definition's {@code _meta} object.
  */
 final class MetaFields {
-
-    private static final String LABEL = "[A-Za-z](?:[A-Za-z0-9-]*[A-Za-z0-9])?";
-    private static final Pattern PREFIX = Pattern.compile(LABEL + "(?:\\." + LABEL + ")*/");
-    private static final Pattern NAME = Pattern.compile("[A-Za-z0-9](?:[A-Za-z0-9._-]*[A-Za-z0-9])?");
-    private static final Set<String> RESERVED_LABELS = Set.of("modelcontextprotocol", "mcp");
 
     private MetaFields() {
     }
@@ -49,35 +42,20 @@ final class MetaFields {
         return json.build();
     }
 
-    private static String key(MetaField field) {
-        String prefix = field.prefix();
-        if (!prefix.isEmpty()) {
-            if (!PREFIX.matcher(prefix).matches()) {
-                throw new IllegalArgumentException("@MetaField prefix '" + prefix
-                        + "' must be dot-separated labels followed by '/', e.g. 'example.com/'");
-            }
-            if (isReserved(prefix)) {
-                throw new IllegalArgumentException("@MetaField prefix '" + prefix + "' is reserved for MCP");
-            }
-        }
-        if (!NAME.matcher(field.name()).matches()) {
-            throw new IllegalArgumentException("@MetaField name '" + field.name()
-                    + "' must begin and end with a letter or digit and contain only letters, digits, '-', '_' "
-                    + "and '.'");
-        }
-        return prefix + field.name();
-    }
-
     /**
-     * A prefix is reserved if {@code modelcontextprotocol} or {@code mcp} is its second label (as in
-     * {@code io.modelcontextprotocol/}) or any label but its last (as in {@code tools.mcp.com/}).
+     * The key of a field, checked with {@link MetaKeys}; unlike a key in general, it needs a non-empty name.
      */
-    static boolean isReserved(String prefix) {
-        List<String> labels = Arrays.asList(prefix.substring(0, prefix.length() - 1).split("\\."));
-        if (labels.size() >= 2 && RESERVED_LABELS.contains(labels.get(1))) {
-            return true;
+    private static String key(MetaField field) {
+        try {
+            MetaKeys.checkPrefix(field.prefix());
+            if (field.name().isEmpty()) {
+                throw new IllegalArgumentException("name must not be empty");
+            }
+            MetaKeys.checkName(field.name());
+        } catch (IllegalArgumentException e) {
+            throw new IllegalArgumentException("@MetaField " + e.getMessage());
         }
-        return labels.subList(0, labels.size() - 1).stream().anyMatch(RESERVED_LABELS::contains);
+        return field.prefix() + field.name();
     }
 
     private static JsonValue value(MetaField field) {

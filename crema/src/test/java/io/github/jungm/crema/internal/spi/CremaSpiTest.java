@@ -406,15 +406,14 @@ class CremaSpiTest {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = { "name", "a", "a1", "a-b_c.d", "com.example/key", "io.modelcontextprotocol/progress",
-            "com.example/", "a-1.b2/x", "" })
+    @ValueSource(strings = { "name", "a", "a1", "a-b_c.d", "com.example/key", "com.example/", "a-1.b2/x", "" })
     void validMetaKeys(String key) {
         assertEquals(Map.of(key, "v"), TextContent.builder("t").putMetadata(key, "v").build().metadata());
     }
 
     @ParameterizedTest
     @ValueSource(strings = { "-a", "a-", "a b", "1com/x", "com./x", "com-/x", "/x", "com.example//x", "a/b/c",
-            "_x" })
+            "_x", "io.modelcontextprotocol/progress" })
     void invalidMetaKeys(String key) {
         assertThrows(IllegalArgumentException.class, () -> TextContent.builder("t").putMetadata(key, "v"));
         assertThrows(IllegalArgumentException.class,

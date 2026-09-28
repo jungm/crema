@@ -382,17 +382,6 @@ class FeatureScannerTest {
     }
 
     @Test
-    void reservedPrefixes() {
-        for (String reserved : List.of("io.modelcontextprotocol/", "dev.mcp/", "com.mcp.tools/",
-                "modelcontextprotocol.io/", "tools.mcp.com/", "api.modelcontextprotocol.org/")) {
-            assertTrue(MetaFields.isReserved(reserved), reserved);
-        }
-        for (String free : List.of("com.example.mcp/", "example.com/", "mcp/", "com.example/")) {
-            assertFalse(MetaFields.isReserved(free), free);
-        }
-    }
-
-    @Test
     void argumentNamesNeedParametersOrAnnotation(@TempDir Path dir) throws Exception {
         Class<?> type = compileWithoutParameterNames(dir, "Unnamed", """
                 public class Unnamed {
