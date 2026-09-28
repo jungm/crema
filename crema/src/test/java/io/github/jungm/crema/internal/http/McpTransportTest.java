@@ -306,10 +306,10 @@ class McpTransportTest {
     }
 
     @Test
-    void errorsFromFeatureMethodsBecomeInternalErrors() {
-        Exchange json = call("tools/call", ",\"name\":\"fatal\"", "fatal");
-        assertError(200, -32603, "Internal error", json);
-        assertFalse(json.messages().get(0).toString().contains("secret"));
+    void errorsFromFeatureMethodsDontLeakAndFinishTheStream() {
+        JsonObject json = result(call("tools/call", ",\"name\":\"fatal\"", "fatal"));
+        assertEquals(JsonValue.TRUE, json.get("isError"));
+        assertFalse(json.toString().contains("secret"));
 
         String body = "{\"jsonrpc\":\"2.0\",\"id\":9,\"method\":\"tools/call\",\"params\":{"
                 + "\"name\":\"fatal\",\"_meta\":{\"progressToken\":\"p\","
@@ -317,9 +317,9 @@ class McpTransportTest {
                 + "\"io.modelcontextprotocol/clientCapabilities\":{}}}}";
         Exchange stream = post(body, RequestValidatorTest.headers("2026-07-28", "tools/call", "fatal"));
         assertTrue(stream.streamed());
-        JsonObject error = stream.messages().get(stream.messages().size() - 1).getJsonObject("error");
-        assertEquals(-32603, error.getInt("code"));
-        assertFalse(error.toString().contains("secret"));
+        JsonObject last = stream.messages().get(stream.messages().size() - 1);
+        assertEquals(9, last.getInt("id"));
+        assertFalse(last.toString().contains("secret"));
     }
 
     @Test

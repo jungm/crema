@@ -113,4 +113,24 @@ class JaxRsTest {
         assertTrue(events.send("{}").toCompletableFuture().isCompletedExceptionally());
         events.close();
     }
+
+    @Test
+    void committedResponsesAreFinal() throws IOException {
+        Recorder recorder = new Recorder();
+        HttpServletResponse response = recorder.response();
+        HttpServletResponse committedAware = (HttpServletResponse) Proxy.newProxyInstance(
+                getClass().getClassLoader(), new Class<?>[] {HttpServletResponse.class}, (proxy, method, args) ->
+                        method.getName().equals("isCommitted") ? recorder.committed : method.invoke(response, args));
+        CommittedResponseFilter.Final wrapper = new CommittedResponseFilter.Final(committedAware);
+        JaxRs.write(wrapper, new HttpReply(400, Map.of(), "{}"));
+        wrapper.setStatus(204);
+        wrapper.setHeader("X-App-Filter", "yes");
+        wrapper.addHeader("X-App-Filter", "yes");
+        wrapper.setContentType("text/plain");
+        wrapper.sendError(500);
+        wrapper.reset();
+        assertEquals(400, recorder.status);
+        assertEquals("application/json", recorder.contentType);
+        assertEquals(Map.of(), recorder.headers);
+    }
 }
