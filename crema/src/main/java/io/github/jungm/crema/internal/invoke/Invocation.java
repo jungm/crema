@@ -1,0 +1,118 @@
+package io.github.jungm.crema.internal.invoke;
+
+import java.util.List;
+import java.util.Map;
+import java.util.function.Function;
+
+import org.mcpjava.server.McpRequest;
+import org.mcpjava.server.completion.CompletionContext;
+import org.mcpjava.server.progress.Progress;
+
+import io.github.jungm.crema.internal.bind.ArgumentBinder;
+import io.github.jungm.crema.internal.bind.BindingException;
+import io.github.jungm.crema.internal.model.FeatureMethod;
+import io.github.jungm.crema.internal.model.Param;
+import jakarta.json.JsonObject;
+import jakarta.json.JsonValue;
+
+/**
+ * Supplies the parameters of Feature Methods and Completion Methods for one request.
+ */
+public final class Invocation {
+
+    private final McpRequest request;
+    private final Progress progress;
+    private final CompletionContext completionContext;
+
+    /**
+     * @param completionContext the context of a {@code completion/complete} request, or {@code null}
+     */
+    public Invocation(McpRequest request, Progress progress, CompletionContext completionContext) {
+        this.request = request;
+        this.progress = progress;
+        this.completionContext = completionContext;
+    }
+
+    /**
+     * Invokes a method, obtaining each Argument from {@code arguments}.
+     *
+     * @throws BindingException if an Argument is missing or can't be bound, before the method is invoked
+     * @throws Exception whatever the method throws
+     */
+    public Object invoke(FeatureMethod method, Function<Param.Argument, Object> arguments) throws Exception {
+        List<Param> params = method.params();
+        Object[] values = new Object[params.size()];
+        for (int i = 0; i < values.length; i++) {
+            Param param = params.get(i);
+            if (param instanceof Param.Argument argument) {
+                values[i] = arguments.apply(argument);
+            } else {
+                values[i] = injected((Param.Injected) param);
+            }
+        }
+        return method.invoke(values);
+    }
+
+    private Object injected(Param.Injected param) {
+        switch (param) {
+            case MCP_REQUEST:
+                return request;
+            case PROGRESS:
+                return progress;
+            case CANCELLATION:
+                return NeverCancelled.INSTANCE;
+            default:
+                return completionContext;
+        }
+    }
+
+    /**
+     * Arguments from a JSON object, bound to the parameter types.
+     *
+     * @param json the {@code arguments} object, or {@code null} when the request has none
+     */
+    public static Function<Param.Argument, Object> fromJson(JsonObject json, ArgumentBinder binder) {
+        return argument -> {
+            JsonValue value = json == null ? null : json.get(argument.name());
+            if (value == null) {
+                return absent(argument, binder);
+            }
+            try {
+                return binder.bind(value, argument.type());
+            } catch (BindingException e) {
+                throw e.atMember(argument.name());
+            }
+        };
+    }
+
+    /**
+     * Arguments from string values, such as Prompt arguments and URI template variables. A {@code String}
+     * parameter takes the value as is; other types parse it like a {@code defaultValue}.
+     */
+    public static Function<Param.Argument, Object> fromStrings(Map<String, String> strings, ArgumentBinder binder) {
+        return argument -> {
+            String value = strings.get(argument.name());
+            if (value == null) {
+                return absent(argument, binder);
+            }
+            if (argument.type() == String.class) {
+                return value;
+            }
+            try {
+                return binder.bindDefault(value, argument.type());
+            } catch (BindingException e) {
+                throw e.atMember(argument.name());
+            }
+        };
+    }
+
+    private static Object absent(Param.Argument argument, ArgumentBinder binder) {
+        if (argument.defaultValue() != null) {
+            return binder.bindDefault(argument.defaultValue(), argument.type());
+        }
+        if (argument.required()) {
+            throw new BindingException("Missing required argument '" + argument.name() + "'");
+        }
+        return binder.absent(argument.type());
+    }
+}
