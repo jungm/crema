@@ -155,9 +155,14 @@ public final class CremaAccessPolicy implements AccessPolicy, Closeable {
                         + access.protection().resourceMetadataUrl() + "\""));
     }
 
+    /**
+     * Private if the MCP Server is protected, if any of its Features is restricted to roles, or if the caller is
+     * authenticated, by the Runtime or by a token; public otherwise.
+     */
     @Override
-    public boolean isPrivate(McpServerModel server) {
-        return access(server).isPrivate();
+    public boolean isPrivate(McpServerModel server, Caller caller) {
+        return access(server).isPrivate() || caller instanceof TokenCaller
+                || CallerPrincipal.safely(caller::principal) != null;
     }
 
     @Override

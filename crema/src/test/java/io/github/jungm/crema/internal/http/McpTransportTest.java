@@ -357,7 +357,7 @@ class McpTransportTest {
             }
 
             @Override
-            public boolean isPrivate(McpServerModel server) {
+            public boolean isPrivate(McpServerModel server, Caller caller) {
                 return true;
             }
         };

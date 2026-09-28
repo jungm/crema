@@ -32,8 +32,8 @@ public interface AccessPolicy {
         }
 
         @Override
-        public boolean isPrivate(McpServerModel server) {
-            return false;
+        public boolean isPrivate(McpServerModel server, Caller caller) {
+            return CallerPrincipal.safely(caller::principal) != null;
         }
 
         @Override
@@ -66,10 +66,12 @@ public interface AccessPolicy {
     Rejection forbidden(McpServerModel server, Caller caller);
 
     /**
-     * Whether results of the MCP Server depend on the caller, which makes their {@code cacheScope}
+     * Whether a result for this caller may depend on who the caller is, which makes its {@code cacheScope}
      * {@code private}.
+     *
+     * @param caller a caller {@link #authenticate admitted} by this policy
      */
-    boolean isPrivate(McpServerModel server);
+    boolean isPrivate(McpServerModel server, Caller caller);
 
     /**
      * The Protected Resource Metadata (RFC 9728) of a protected MCP Server; empty for other MCP Servers. It

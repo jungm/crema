@@ -50,11 +50,12 @@ final class Listings {
     }
 
     /**
-     * Adds {@code ttlMs} and {@code cacheScope}.
+     * Adds {@code ttlMs} and {@code cacheScope}: {@code private} if the result may depend on the caller, else
+     * {@code public}.
      */
     static JsonObjectBuilder cacheable(JsonObjectBuilder result, Call call, long ttlMs) {
-        return result.add("ttlMs", ttlMs)
-                .add("cacheScope", call.services().access().isPrivate(call.server()) ? "private" : "public");
+        return result.add("ttlMs", ttlMs).add("cacheScope",
+                call.services().access().isPrivate(call.server(), call.caller()) ? "private" : "public");
     }
 
     private static <F extends Feature> JsonObject list(Call call, String key, Collection<F> features,

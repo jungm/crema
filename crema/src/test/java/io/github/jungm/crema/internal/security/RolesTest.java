@@ -161,6 +161,29 @@ class RolesTest {
     }
 
     @Test
+    void cacheScopeIsPrivateOnlyIfTheResultMayDependOnTheCaller() {
+        fixture("groups");
+        String read = ",\"uri\":\"test://plain\"";
+        RequestCaller anonymous = RequestCaller.anonymous();
+        assertEquals("public", fixture.listTools(fixture.plainServer, anonymous).result().getString("cacheScope"));
+        assertEquals("public", fixture.call(fixture.plainServer, anonymous, "resources/read", read, "test://plain")
+                .result().getString("cacheScope"));
+        assertEquals("public", fixture.call(fixture.plainServer, anonymous, "server/discover", "", null).result()
+                .getString("cacheScope"));
+
+        RequestCaller bob = new RequestCaller(() -> "bob", Set.of());
+        assertEquals("private", fixture.listTools(fixture.plainServer, bob).result().getString("cacheScope"),
+                "the Runtime authenticated the caller");
+        assertEquals("private", fixture.call(fixture.plainServer, bob, "resources/read", read, "test://plain")
+                .result().getString("cacheScope"));
+
+        assertEquals("private", fixture.listTools(fixture.openServer, anonymous).result().getString("cacheScope"),
+                "Features are restricted to roles");
+        assertEquals("private", fixture.listTools(fixture.protectedServer, user()).result().getString("cacheScope"),
+                "the MCP Server is protected");
+    }
+
+    @Test
     void openServerIgnoresBearerTokens() {
         fixture("groups");
         Exchange exchange = fixture.callTool(fixture.openServer,

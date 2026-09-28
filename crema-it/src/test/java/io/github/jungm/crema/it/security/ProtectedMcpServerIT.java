@@ -202,6 +202,7 @@ class ProtectedMcpServerIT {
         record("open server, anonymous tools/list", list);
         assertEquals(200, list.statusCode(), list::body);
         assertEquals(Set.of("free"), names(list, "tools"));
+        assertEquals("private", result(list).get("cacheScope"), "the admin Tool is restricted to a role");
         assertEquals("anonymous", text(callTool("open", "free", null)));
         HttpResponse<String> forbidden = callTool("open", "admin", null);
         assertEquals(403, forbidden.statusCode(), forbidden::body);
