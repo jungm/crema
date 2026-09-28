@@ -22,6 +22,7 @@ import io.github.jungm.crema.internal.cdi.CremaDeployment;
 import io.github.jungm.crema.internal.config.ConfigLookup;
 import io.github.jungm.crema.internal.config.CremaSettings;
 import io.github.jungm.crema.internal.config.ServerSettings;
+import io.github.jungm.crema.internal.security.Protection;
 import jakarta.servlet.ServletContainerInitializer;
 import jakarta.servlet.ServletContext;
 import jakarta.servlet.ServletException;
@@ -55,9 +56,11 @@ public class CremaInitializer implements ServletContainerInitializer {
         List<CremaDeployment.Application> applications = new ArrayList<>();
         for (Class<?> type : types) {
             Icons icons = type.getAnnotation(Icons.class);
-            applications.add(new CremaDeployment.Application(type,
-                    ServerSettings.resolve(type.getAnnotation(McpServerInfo.class), config, manifestVersion),
-                    icons == null ? null : icons.iconProvider()));
+            ServerSettings server = ServerSettings.resolve(type.getAnnotation(McpServerInfo.class), config,
+                    manifestVersion);
+            applications.add(new CremaDeployment.Application(type, server,
+                    icons == null ? null : icons.iconProvider(),
+                    Protection.resolve(type, server, config, problems).orElse(null)));
         }
         if (problems.isEmpty()) {
             problems.addAll(CremaDeployment.applicationsDiscovered(context,

@@ -8,10 +8,11 @@ import java.lang.reflect.Type;
 public sealed interface Param permits Param.Injected, Param.Argument {
 
     /**
-     * Parameters that Crema supplies.
+     * Parameters that Crema supplies. {@code CALLER} is an {@code io.github.jungm.crema.McpCaller} and
+     * {@code PRINCIPAL} a {@code java.security.Principal}.
      */
     enum Injected implements Param {
-        MCP_REQUEST, PROGRESS, CANCELLATION, COMPLETION_CONTEXT
+        MCP_REQUEST, PROGRESS, CANCELLATION, COMPLETION_CONTEXT, CALLER, PRINCIPAL
     }
 
     /**

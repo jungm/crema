@@ -34,7 +34,7 @@
     <container qualifier="openliberty">
         <configuration>
             <property name="wlpHome">${it.liberty.home}</property>
-            <property name="serverName">crema-it</property>
+            <property name="serverName">${it.liberty.server}</property>
             <property name="httpPort">${it.liberty.http.port}</property>
             <property name="deployType">dropins</property>
             <property name="serverStartTimeout">120</property>
@@ -45,7 +45,7 @@
     <container qualifier="websphere-liberty">
         <configuration>
             <property name="wlpHome">${it.liberty.home}</property>
-            <property name="serverName">crema-it</property>
+            <property name="serverName">${it.liberty.server}</property>
             <property name="httpPort">${it.liberty.http.port}</property>
             <property name="deployType">dropins</property>
             <property name="serverStartTimeout">120</property>

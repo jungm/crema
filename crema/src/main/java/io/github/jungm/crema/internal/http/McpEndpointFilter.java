@@ -8,6 +8,7 @@ import java.util.Optional;
 import java.util.function.Function;
 
 import io.github.jungm.crema.internal.security.Caller;
+import io.github.jungm.crema.internal.security.TokenSecurityContext;
 import jakarta.ws.rs.HttpMethod;
 import jakarta.ws.rs.container.ContainerRequestContext;
 import jakarta.ws.rs.container.ContainerRequestFilter;
@@ -22,7 +23,8 @@ import jakarta.ws.rs.core.MultivaluedMap;
 
 /**
  * Screens every request to the MCP Endpoint before resource matching ({@code Origin}, authentication) and validates
- * {@code POST}s, answering invalid ones itself. For a valid {@code POST} it sets {@code Accept} to
+ * {@code POST}s, answering invalid ones itself. A request admitted for a bearer token caller gets a
+ * {@link TokenSecurityContext} for the rest of its JAX-RS processing. For a valid {@code POST} it sets {@code Accept} to
  * {@code text/event-stream} or {@code application/json}, which selects the {@link McpEndpoint} method that
  * streams or responds with JSON.
  */
@@ -45,13 +47,14 @@ public class McpEndpointFilter implements ContainerRequestFilter, ContainerRespo
         }
         McpTransport transport = target.get().transport();
         Function<String, List<String>> headers = JaxRs.headers(request.getHeaders());
-        Caller caller = JaxRs.caller(request.getSecurityContext(), headers);
-        Optional<HttpReply> rejected = transport.screen(target.get().server(), JaxRs.first(headers, "Origin"),
-                caller);
-        if (rejected.isPresent()) {
-            request.abortWith(JaxRs.response(rejected.get()));
+        McpTransport.Screening screening = transport.screen(target.get().server(), JaxRs.first(headers, "Origin"),
+                JaxRs.caller(request.getSecurityContext(), headers, request.getUriInfo()));
+        if (screening instanceof McpTransport.Reply rejected) {
+            request.abortWith(JaxRs.response(rejected.reply()));
             return;
         }
+        Caller caller = ((McpTransport.Admitted) screening).caller();
+        TokenSecurityContext.replacing(request.getSecurityContext(), caller).ifPresent(request::setSecurityContext);
         if (!HttpMethod.POST.equals(request.getMethod())) {
             return;
         }

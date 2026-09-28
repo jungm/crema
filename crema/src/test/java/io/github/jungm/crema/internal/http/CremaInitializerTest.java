@@ -78,6 +78,7 @@ class CremaInitializerTest {
     void applicationNamesItsSubclass() {
         Plain application = new Plain();
         assertEquals(Map.of(McpApplication.APPLICATION_PROPERTY, Plain.class), application.getProperties());
-        assertEquals(Set.of(McpEndpoint.class, McpEndpointFilter.class), application.getClasses());
+        assertEquals(Set.of(McpEndpoint.class, McpEndpointFilter.class, ResourceMetadataEndpoint.class),
+                application.getClasses());
     }
 }

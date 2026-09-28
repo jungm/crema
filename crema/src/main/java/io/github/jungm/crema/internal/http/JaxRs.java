@@ -12,12 +12,14 @@ import io.github.jungm.crema.McpApplication;
 import io.github.jungm.crema.internal.cdi.CremaDeployment;
 import io.github.jungm.crema.internal.model.McpServerModel;
 import io.github.jungm.crema.internal.security.Caller;
+import io.github.jungm.crema.internal.security.TokenSecurityContext;
 import jakarta.ws.rs.core.Configuration;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.MultivaluedMap;
 import jakarta.ws.rs.core.Response;
 import jakarta.ws.rs.core.SecurityContext;
 import jakarta.ws.rs.core.StreamingOutput;
+import jakarta.ws.rs.core.UriInfo;
 
 /**
  * Adapts {@link McpTransport} to JAX-RS. Bodies are read and written as raw bytes, so no application provider can
@@ -64,9 +66,15 @@ final class JaxRs {
     }
 
     /**
-     * The caller according to the Runtime. The security context is consulted only when a policy asks.
+     * The caller of a request: the bearer token caller if {@link McpEndpointFilter} has admitted one, else the
+     * caller according to the Runtime, whose security context is consulted only when a policy asks.
      */
-    static Caller caller(SecurityContext security, Function<String, List<String>> headers) {
+    static Caller caller(SecurityContext security, Function<String, List<String>> headers, UriInfo uriInfo) {
+        Optional<Caller> token = TokenSecurityContext.caller(security);
+        if (token.isPresent()) {
+            return token.get();
+        }
+        String endpointUrl = endpointUrl(uriInfo);
         return new Caller() {
             @Override
             public List<String> header(String name) {
@@ -82,7 +90,27 @@ final class JaxRs {
             public boolean isUserInRole(String role) {
                 return security != null && security.isUserInRole(role);
             }
+
+            @Override
+            public String endpointUrl() {
+                return endpointUrl;
+            }
         };
+    }
+
+    /**
+     * The URL of the MCP Endpoint that a request addresses: the base URI of its {@code McpApplication}, without a
+     * trailing slash.
+     */
+    static String endpointUrl(UriInfo uriInfo) {
+        if (uriInfo == null) {
+            return null;
+        }
+        String base = uriInfo.getBaseUri().toString();
+        while (base.endsWith("/")) {
+            base = base.substring(0, base.length() - 1);
+        }
+        return base;
     }
 
     static Response response(HttpReply reply) {
