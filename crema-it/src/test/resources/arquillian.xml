@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- One container per Runtime; the Maven profile selects it through the arquillian.launch system property. -->
+<arquillian xmlns="http://jboss.org/schema/arquillian"
+            xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+            xsi:schemaLocation="http://jboss.org/schema/arquillian http://jboss.org/schema/arquillian/arquillian_1_0.xsd">
+
+    <container qualifier="tomee">
+        <configuration>
+            <property name="groupId">org.apache.tomee</property>
+            <property name="artifactId">apache-tomee</property>
+            <property name="version">${it.tomee.version}</property>
+            <property name="classifier">${it.tomee.classifier}</property>
+            <property name="type">zip</property>
+            <property name="dir">${it.tomee.dir}</property>
+            <property name="appWorkingDir">${it.tomee.dir}/apps</property>
+            <property name="httpPort">${it.tomee.http.port}</property>
+            <property name="stopPort">${it.tomee.stop.port}</property>
+            <property name="ajpPort">-1</property>
+            <property name="cleanOnStartUp">true</property>
+            <property name="simpleLog">true</property>
+        </configuration>
+    </container>
+
+    <container qualifier="wildfly">
+        <configuration>
+            <property name="jbossHome">${it.wildfly.home}</property>
+            <property name="serverConfig">standalone-microprofile.xml</property>
+            <property name="javaVmArguments">-Djboss.socket.binding.port-offset=${it.wildfly.port.offset} -Xmx768m</property>
+            <property name="managementPort">${it.wildfly.management.port}</property>
+            <property name="allowConnectingToRunningServer">false</property>
+        </configuration>
+    </container>
+
+    <container qualifier="openliberty">
+        <configuration>
+            <property name="wlpHome">${it.liberty.home}</property>
+            <property name="serverName">crema-it</property>
+            <property name="httpPort">${it.liberty.http.port}</property>
+            <property name="deployType">dropins</property>
+            <property name="serverStartTimeout">120</property>
+            <property name="appDeployTimeout">60</property>
+        </configuration>
+    </container>
+
+    <container qualifier="websphere-liberty">
+        <configuration>
+            <property name="wlpHome">${it.liberty.home}</property>
+            <property name="serverName">crema-it</property>
+            <property name="httpPort">${it.liberty.http.port}</property>
+            <property name="deployType">dropins</property>
+            <property name="serverStartTimeout">120</property>
+            <property name="appDeployTimeout">60</property>
+        </configuration>
+    </container>
+</arquillian>
