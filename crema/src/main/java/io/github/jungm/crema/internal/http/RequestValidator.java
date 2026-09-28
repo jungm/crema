@@ -12,7 +12,7 @@ import java.util.function.Function;
 
 import io.github.jungm.crema.internal.invoke.McpRequestImpl;
 import io.github.jungm.crema.internal.protocol.Dispatcher;
-import io.github.jungm.crema.internal.protocol.Json;
+import io.github.jungm.crema.internal.json.Json;
 import io.github.jungm.crema.internal.protocol.McpError;
 import io.github.jungm.crema.internal.protocol.Request;
 import jakarta.json.JsonException;

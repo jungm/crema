@@ -39,7 +39,7 @@ import org.mcpjava.server.tools.ToolArg;
 import org.mcpjava.server.tools.ToolResponse;
 
 import io.github.jungm.crema.internal.invoke.Mapping;
-import io.github.jungm.crema.internal.protocol.Json;
+import io.github.jungm.crema.internal.json.Json;
 import jakarta.json.JsonObject;
 
 /**

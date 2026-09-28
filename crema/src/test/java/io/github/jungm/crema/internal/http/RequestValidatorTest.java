@@ -17,7 +17,7 @@ import java.util.function.Function;
 import org.junit.jupiter.api.Test;
 
 import io.github.jungm.crema.internal.protocol.Dispatcher;
-import io.github.jungm.crema.internal.protocol.Json;
+import io.github.jungm.crema.internal.json.Json;
 import jakarta.json.JsonObject;
 
 /**

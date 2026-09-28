@@ -16,7 +16,7 @@ import io.github.jungm.crema.internal.invoke.ProgressChannel;
 import io.github.jungm.crema.internal.model.McpServerModel;
 import io.github.jungm.crema.internal.model.ServerRegistry;
 import io.github.jungm.crema.internal.protocol.Dispatcher;
-import io.github.jungm.crema.internal.protocol.Json;
+import io.github.jungm.crema.internal.json.Json;
 import io.github.jungm.crema.internal.protocol.McpError;
 import io.github.jungm.crema.internal.protocol.Request;
 import io.github.jungm.crema.internal.security.AccessPolicy;

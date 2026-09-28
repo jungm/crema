@@ -35,7 +35,7 @@ import io.github.jungm.crema.internal.model.Scanning;
 import io.github.jungm.crema.internal.model.McpServerModel;
 import io.github.jungm.crema.internal.model.ServerRegistry;
 import io.github.jungm.crema.internal.protocol.Dispatcher;
-import io.github.jungm.crema.internal.protocol.Json;
+import io.github.jungm.crema.internal.json.Json;
 import io.github.jungm.crema.internal.protocol.Services;
 import jakarta.annotation.security.DenyAll;
 import jakarta.annotation.security.PermitAll;

@@ -15,7 +15,7 @@ import org.mcpjava.server.progress.ProgressToken;
 import org.mcpjava.server.progress.ProgressTracker;
 
 import io.github.jungm.crema.internal.json.ProtocolJson;
-import io.github.jungm.crema.internal.protocol.Json;
+import io.github.jungm.crema.internal.json.Json;
 import jakarta.json.JsonObjectBuilder;
 import jakarta.json.JsonValue;
 

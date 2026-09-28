@@ -3,6 +3,7 @@ package io.github.jungm.crema.internal.protocol;
 import java.util.Collection;
 import java.util.function.Function;
 
+import io.github.jungm.crema.internal.json.Json;
 import io.github.jungm.crema.internal.model.Feature;
 import io.github.jungm.crema.internal.model.McpServerModel;
 import jakarta.json.JsonArrayBuilder;

@@ -9,7 +9,7 @@ import java.util.regex.Pattern;
 
 import org.mcpjava.server.MetaField;
 
-import io.github.jungm.crema.internal.protocol.Json;
+import io.github.jungm.crema.internal.json.Json;
 import jakarta.json.JsonException;
 import jakarta.json.JsonObject;
 import jakarta.json.JsonObjectBuilder;

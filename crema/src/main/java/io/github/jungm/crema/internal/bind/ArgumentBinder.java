@@ -30,6 +30,7 @@ import java.util.TreeMap;
 import java.util.TreeSet;
 import java.util.function.Supplier;
 
+import io.github.jungm.crema.internal.json.Json;
 import jakarta.json.JsonArray;
 import jakarta.json.JsonException;
 import jakarta.json.JsonNumber;
@@ -145,7 +146,7 @@ public final class ArgumentBinder {
         JsonValue parsed = parseLiteral(defaultValue);
         JsonValue json;
         if (isStringLike(Types.rawType(valueType))) {
-            json = parsed instanceof JsonString ? parsed : jsonb.jsonProvider().createValue(defaultValue);
+            json = parsed instanceof JsonString ? parsed : Json.PROVIDER.createValue(defaultValue);
         } else if (parsed == null) {
             throw new BindingException("invalid default value " + quote(defaultValue) + ": not a JSON value");
         } else {
@@ -170,7 +171,7 @@ public final class ArgumentBinder {
         Type valueType = Types.isOptional(resolved) ? Types.optionalValueType(resolved) : resolved;
         Class<?> raw = Types.rawType(valueType);
         if (raw == String.class || raw == CharSequence.class) {
-            return bind(jsonb.jsonProvider().createValue(value), resolved);
+            return bind(Json.PROVIDER.createValue(value), resolved);
         }
         return bindDefault(value, resolved);
     }
@@ -484,7 +485,7 @@ public final class ArgumentBinder {
     }
 
     private JsonValue parseLiteral(String literal) {
-        try (JsonParser parser = jsonb.jsonProvider().createParser(new StringReader(literal))) {
+        try (JsonParser parser = Json.PROVIDER.createParser(new StringReader(literal))) {
             if (!parser.hasNext()) {
                 return null;
             }

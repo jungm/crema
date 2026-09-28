@@ -10,7 +10,7 @@ import org.mcpjava.server.ImplementationInfo;
 import org.mcpjava.server.McpRequest;
 
 import io.github.jungm.crema.internal.json.ProtocolJson;
-import io.github.jungm.crema.internal.protocol.Json;
+import io.github.jungm.crema.internal.json.Json;
 import jakarta.json.JsonNumber;
 import jakarta.json.JsonObject;
 import jakarta.json.JsonString;

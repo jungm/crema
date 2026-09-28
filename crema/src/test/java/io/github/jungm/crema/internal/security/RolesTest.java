@@ -15,7 +15,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
 import io.github.jungm.crema.internal.http.HttpReply;
-import io.github.jungm.crema.internal.protocol.Json;
+import io.github.jungm.crema.internal.json.Json;
 import io.github.jungm.crema.internal.security.Fixture.Exchange;
 import io.github.jungm.crema.internal.security.Fixture.RequestCaller;
 

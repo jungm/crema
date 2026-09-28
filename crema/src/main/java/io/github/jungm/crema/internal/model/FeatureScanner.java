@@ -47,7 +47,7 @@ import io.github.jungm.crema.internal.bind.Types;
 import io.github.jungm.crema.internal.invoke.Mapping;
 import io.github.jungm.crema.internal.json.ProtocolJson;
 import io.github.jungm.crema.internal.schema.SchemaProperty;
-import io.github.jungm.crema.internal.protocol.Json;
+import io.github.jungm.crema.internal.json.Json;
 import jakarta.json.JsonArrayBuilder;
 import jakarta.json.JsonObject;
 import jakarta.json.JsonObjectBuilder;

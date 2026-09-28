@@ -8,6 +8,7 @@ import java.util.logging.Logger;
 
 import io.github.jungm.crema.internal.invoke.ProgressChannel;
 import io.github.jungm.crema.internal.invoke.ProgressTokenImpl;
+import io.github.jungm.crema.internal.json.Json;
 import io.github.jungm.crema.internal.json.ProtocolJson;
 import io.github.jungm.crema.internal.model.Feature;
 import io.github.jungm.crema.internal.model.McpServerModel;

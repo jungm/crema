@@ -1,4 +1,4 @@
-package io.github.jungm.crema.internal.protocol;
+package io.github.jungm.crema.internal.json;
 
 import java.io.ByteArrayInputStream;
 import java.io.StringReader;
@@ -22,7 +22,8 @@ import jakarta.json.JsonWriter;
 import jakarta.json.spi.JsonProvider;
 
 /**
- * JSON-P helpers for the protocol envelope.
+ * The one JSON-P provider and builder factory Crema creates all JSON values with, and general JSON-P helpers.
+ * {@link ProtocolJson} builds on it for the wire shapes of the API's value types.
  */
 public final class Json {
 

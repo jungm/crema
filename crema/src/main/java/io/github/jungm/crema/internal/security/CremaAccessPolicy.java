@@ -24,7 +24,7 @@ import com.nimbusds.jwt.JWTClaimsSet;
 import io.github.jungm.crema.internal.model.Feature;
 import io.github.jungm.crema.internal.model.FeatureMethod;
 import io.github.jungm.crema.internal.model.McpServerModel;
-import io.github.jungm.crema.internal.protocol.Json;
+import io.github.jungm.crema.internal.json.Json;
 import jakarta.json.JsonObject;
 
 /**

@@ -30,6 +30,7 @@ import java.util.TreeMap;
 import java.util.UUID;
 
 import io.github.jungm.crema.internal.bind.Types;
+import io.github.jungm.crema.internal.json.Json;
 import io.github.jungm.crema.internal.schema.BeanIntrospector.BeanProperty;
 import io.github.jungm.crema.internal.schema.BeanIntrospector.Direction;
 import io.github.jungm.crema.internal.schema.BeanIntrospector.Formats;
@@ -46,7 +47,6 @@ import jakarta.json.bind.annotation.JsonbDateFormat;
 import jakarta.json.bind.annotation.JsonbTypeAdapter;
 import jakarta.json.bind.annotation.JsonbTypeDeserializer;
 import jakarta.json.bind.annotation.JsonbTypeSerializer;
-import jakarta.json.spi.JsonProvider;
 
 /**
  * Generates JSON Schema (draft 2020-12) for Tool {@code inputSchema} and {@code outputSchema}, mirroring the JSON-B
@@ -75,12 +75,6 @@ public final class SchemaGenerator {
             Date.class, Calendar.class, Instant.class, LocalDate.class, LocalTime.class, LocalDateTime.class,
             ZonedDateTime.class, OffsetDateTime.class, OffsetTime.class);
 
-    private final JsonProvider json;
-
-    public SchemaGenerator() {
-        this.json = JsonProvider.provider();
-    }
-
     /**
      * Returns the {@code inputSchema} of a Tool: an object with one property per Argument, in the given order.
      */
@@ -91,13 +85,13 @@ public final class SchemaGenerator {
         }
         run.nameDefinitions();
 
-        JsonObjectBuilder schemas = json.createObjectBuilder();
-        JsonArrayBuilder required = json.createArrayBuilder();
+        JsonObjectBuilder schemas = Json.FACTORY.createObjectBuilder();
+        JsonArrayBuilder required = Json.FACTORY.createArrayBuilder();
         boolean anyRequired = false;
         for (SchemaProperty property : properties) {
             JsonObject schema = run.schema(Types.resolve(property.type()), Formats.DEFAULT);
             if (property.description() != null && !property.description().isEmpty()) {
-                schema = json.createObjectBuilder(schema).add("description", property.description()).build();
+                schema = Json.FACTORY.createObjectBuilder(schema).add("description", property.description()).build();
             }
             schemas.add(property.name(), schema);
             if (property.required()) {
@@ -105,7 +99,7 @@ public final class SchemaGenerator {
                 anyRequired = true;
             }
         }
-        JsonObjectBuilder root = json.createObjectBuilder()
+        JsonObjectBuilder root = Json.FACTORY.createObjectBuilder()
                 .add("type", "object")
                 .add("properties", schemas);
         if (anyRequired) {
@@ -130,7 +124,7 @@ public final class SchemaGenerator {
             // an empty optional is written as null
             schema = nullable(schema);
         }
-        JsonObjectBuilder root = json.createObjectBuilder(schema);
+        JsonObjectBuilder root = Json.FACTORY.createObjectBuilder(schema);
         run.addDefinitions(root);
         return root.build();
     }
@@ -286,7 +280,7 @@ public final class SchemaGenerator {
     }
 
     private JsonObjectBuilder type(String type) {
-        return json.createObjectBuilder().add("type", type);
+        return Json.FACTORY.createObjectBuilder().add("type", type);
     }
 
     private JsonObject integer(long minimum, long maximum) {
@@ -304,19 +298,19 @@ public final class SchemaGenerator {
         JsonValue type = schema.get("type");
         if (!schema.containsKey("enum") && !schema.containsKey("const")) {
             if (type instanceof JsonString) {
-                JsonArray types = json.createArrayBuilder().add(type).add("null").build();
-                return json.createObjectBuilder(schema).add("type", types).build();
+                JsonArray types = Json.FACTORY.createArrayBuilder().add(type).add("null").build();
+                return Json.FACTORY.createObjectBuilder(schema).add("type", types).build();
             }
             if (type instanceof JsonArray) {
-                if (((JsonArray) type).contains(json.createValue("null"))) {
+                if (((JsonArray) type).contains(Json.PROVIDER.createValue("null"))) {
                     return schema;
                 }
-                JsonArray types = json.createArrayBuilder((JsonArray) type).add("null").build();
-                return json.createObjectBuilder(schema).add("type", types).build();
+                JsonArray types = Json.FACTORY.createArrayBuilder((JsonArray) type).add("null").build();
+                return Json.FACTORY.createObjectBuilder(schema).add("type", types).build();
             }
         }
-        return json.createObjectBuilder()
-                .add("anyOf", json.createArrayBuilder().add(schema).add(type("null")))
+        return Json.FACTORY.createObjectBuilder()
+                .add("anyOf", Json.FACTORY.createArrayBuilder().add(schema).add(type("null")))
                 .build();
     }
 
@@ -402,7 +396,7 @@ public final class SchemaGenerator {
 
         void addDefinitions(JsonObjectBuilder schema) {
             if (!definitions.isEmpty()) {
-                JsonObjectBuilder defs = json.createObjectBuilder();
+                JsonObjectBuilder defs = Json.FACTORY.createObjectBuilder();
                 definitions.forEach(defs::add);
                 schema.add("$defs", defs);
             }
@@ -455,7 +449,7 @@ public final class SchemaGenerator {
             // the class of a constant with a body is an anonymous subclass of the enum class
             Class<?> enumClass = raw.isEnum() ? raw : raw.getSuperclass();
             if (enumClass.isEnum()) {
-                JsonArrayBuilder values = json.createArrayBuilder();
+                JsonArrayBuilder values = Json.FACTORY.createArrayBuilder();
                 for (Object constant : enumClass.getEnumConstants()) {
                     values.add(((Enum<?>) constant).name());
                 }
@@ -478,8 +472,8 @@ public final class SchemaGenerator {
                 return type("number").build();
             }
             if (raw == JsonStructure.class) {
-                return json.createObjectBuilder()
-                        .add("type", json.createArrayBuilder().add("object").add("array"))
+                return Json.FACTORY.createObjectBuilder()
+                        .add("type", Json.FACTORY.createArrayBuilder().add("object").add("array"))
                         .build();
             }
             return JsonValue.EMPTY_JSON_OBJECT;
@@ -504,7 +498,7 @@ public final class SchemaGenerator {
         }
 
         private JsonObject ref(String reference) {
-            return json.createObjectBuilder().add("$ref", reference).build();
+            return Json.FACTORY.createObjectBuilder().add("$ref", reference).build();
         }
 
         /**
@@ -527,8 +521,8 @@ public final class SchemaGenerator {
         }
 
         private JsonObject beanSchema(Type type) {
-            JsonObjectBuilder schemas = json.createObjectBuilder();
-            JsonArrayBuilder required = json.createArrayBuilder();
+            JsonObjectBuilder schemas = Json.FACTORY.createObjectBuilder();
+            JsonArrayBuilder required = Json.FACTORY.createArrayBuilder();
             boolean anyProperty = false;
             boolean anyRequired = false;
             for (BeanProperty property : properties(type)) {

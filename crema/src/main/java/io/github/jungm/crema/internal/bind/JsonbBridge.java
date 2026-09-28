@@ -9,6 +9,7 @@ import java.util.OptionalDouble;
 import java.util.OptionalInt;
 import java.util.OptionalLong;
 
+import io.github.jungm.crema.internal.json.Json;
 import jakarta.json.JsonNumber;
 import jakarta.json.JsonString;
 import jakarta.json.JsonValue;
@@ -18,7 +19,6 @@ import jakarta.json.bind.JsonbConfig;
 import jakarta.json.bind.JsonbException;
 import jakarta.json.bind.serializer.JsonbSerializer;
 import jakarta.json.bind.serializer.SerializationContext;
-import jakarta.json.spi.JsonProvider;
 import jakarta.json.stream.JsonGenerator;
 import jakarta.json.stream.JsonParser;
 
@@ -32,11 +32,9 @@ import jakarta.json.stream.JsonParser;
  */
 public final class JsonbBridge implements AutoCloseable {
 
-    private final JsonProvider jsonProvider;
     private final Jsonb jsonb;
 
     public JsonbBridge() {
-        this.jsonProvider = JsonProvider.provider();
         this.jsonb = JsonbBuilder.create(new JsonbConfig()
                 .withSerializers(new BigDecimalSerializer(), new BigIntegerSerializer())
                 .setProperty(JOHNZON_BIG_DECIMAL_AS_STRING, false)
@@ -70,13 +68,6 @@ public final class JsonbBridge implements AutoCloseable {
         public void serialize(BigInteger value, JsonGenerator generator, SerializationContext context) {
             generator.write(value);
         }
-    }
-
-    /**
-     * Returns the JSON-P provider this bridge creates values with.
-     */
-    public JsonProvider jsonProvider() {
-        return jsonProvider;
     }
 
     /**
@@ -163,22 +154,22 @@ public final class JsonbBridge implements AutoCloseable {
         }
         Class<?> type = value.getClass();
         if (type == String.class) {
-            return jsonProvider.createValue((String) value);
+            return Json.PROVIDER.createValue((String) value);
         }
         if (type == Boolean.class) {
             return (Boolean) value ? JsonValue.TRUE : JsonValue.FALSE;
         }
         if (type == Integer.class || type == Short.class || type == Byte.class) {
-            return jsonProvider.createValue(((Number) value).intValue());
+            return Json.PROVIDER.createValue(((Number) value).intValue());
         }
         if (type == Long.class) {
-            return jsonProvider.createValue((long) value);
+            return Json.PROVIDER.createValue((long) value);
         }
         if (type == BigDecimal.class) {
-            return jsonProvider.createValue((BigDecimal) value);
+            return Json.PROVIDER.createValue((BigDecimal) value);
         }
         if (type == BigInteger.class) {
-            return jsonProvider.createValue((BigInteger) value);
+            return Json.PROVIDER.createValue((BigInteger) value);
         }
         if (type == Double.class || type == Float.class) {
             double number = ((Number) value).doubleValue();
@@ -186,10 +177,10 @@ public final class JsonbBridge implements AutoCloseable {
                 throw new JsonbException("Cannot serialize " + value + ": JSON numbers can't be NaN or infinite");
             }
             // JSON-B mandates the toString() representation, which differs from a widened float's.
-            return jsonProvider.createValue(new BigDecimal(value.toString()));
+            return Json.PROVIDER.createValue(new BigDecimal(value.toString()));
         }
         if (type == Character.class) {
-            return jsonProvider.createValue(value.toString());
+            return Json.PROVIDER.createValue(value.toString());
         }
         return null;
     }
@@ -234,7 +225,7 @@ public final class JsonbBridge implements AutoCloseable {
     }
 
     private JsonValue parse(String json) {
-        try (JsonParser parser = jsonProvider.createParser(new StringReader(json))) {
+        try (JsonParser parser = Json.PROVIDER.createParser(new StringReader(json))) {
             parser.next();
             return parser.getValue();
         }
