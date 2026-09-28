@@ -18,6 +18,8 @@
 
         <arquillian.version>1.10.2.Final</arquillian.version>
         <shrinkwrap.version>1.2.6</shrinkwrap.version>
+        <json-schema-validator.version>1.5.9</json-schema-validator.version>
+        <conformance.version>0.2.0-alpha.11</conformance.version>
 
         <tomee.version>10.2.0</tomee.version>
         <tomee.classifier>microprofile</tomee.classifier>
@@ -97,6 +99,18 @@
             <artifactId>junit-jupiter</artifactId>
             <scope>test</scope>
         </dependency>
+        <!-- JSON-P for the MCP test client, and a JSON Schema 2020-12 validator for the wire schema checks. -->
+        <dependency>
+            <groupId>org.eclipse.parsson</groupId>
+            <artifactId>parsson</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>com.networknt</groupId>
+            <artifactId>json-schema-validator</artifactId>
+            <version>${json-schema-validator.version}</version>
+            <scope>test</scope>
+        </dependency>
         <dependency>
             <groupId>org.jboss.arquillian.junit5</groupId>
             <artifactId>arquillian-junit5-container</artifactId>
@@ -130,6 +144,11 @@
                         <crema.it.login-config>${it.login-config}</crema.it.login-config>
                         <crema.it.mpjwt-with-mechanism>${it.mpjwt-with-mechanism}</crema.it.mpjwt-with-mechanism>
                         <crema.it.findings.dir>${project.build.directory}/findings</crema.it.findings.dir>
+                        <!-- Lets the MCP test client send a Host header for the DNS rebinding tests. -->
+                        <jdk.httpclient.allowRestrictedHeaders>host</jdk.httpclient.allowRestrictedHeaders>
+                        <crema.it.conformance.version>${conformance.version}</crema.it.conformance.version>
+                        <crema.it.conformance.baseline>${project.basedir}/src/test/conformance/baseline-2026-07-28.yml</crema.it.conformance.baseline>
+                        <crema.it.conformance.output>${project.build.directory}/conformance</crema.it.conformance.output>
                         <it.tomee.http.port>${it.tomee.http.port}</it.tomee.http.port>
                         <it.tomee.stop.port>${it.tomee.stop.port}</it.tomee.stop.port>
                         <it.tomee.dir>${project.build.directory}/tomee</it.tomee.dir>
