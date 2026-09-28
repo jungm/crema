@@ -2,6 +2,7 @@ package io.github.jungm.crema.internal.model;
 
 import java.math.BigInteger;
 import java.util.Arrays;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.regex.Pattern;
@@ -37,8 +38,13 @@ final class MetaFields {
             return null;
         }
         JsonObjectBuilder json = Json.object();
+        Set<String> keys = new HashSet<>();
         for (MetaField field : fields) {
-            json.add(key(field), value(field));
+            String key = key(field);
+            if (!keys.add(key)) {
+                throw new IllegalArgumentException("more than one @MetaField has the key '" + key + "'");
+            }
+            json.add(key, value(field));
         }
         return json.build();
     }

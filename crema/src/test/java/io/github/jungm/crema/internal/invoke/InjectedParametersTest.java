@@ -102,16 +102,13 @@ class InjectedParametersTest {
     }
 
     @Test
-    void withoutTokenSendingDoesNothing() throws Exception {
+    void withoutTokenBuildersThrow() {
         Progress progress = new ProgressImpl(null, message -> {
             throw new AssertionError("sent " + message);
         }, JSONB::toJsonValue);
         assertFalse(progress.token().isPresent());
-        CompletableFuture<Void> sent = progress.notificationBuilder().setProgress(1).build().send();
-        assertTrue(sent.isDone());
-        sent.get();
-        progress.trackerBuilder().build().advanceAndForget();
-        assertThrows(IllegalStateException.class, () -> progress.notificationBuilder().build().token());
+        assertThrows(IllegalStateException.class, progress::notificationBuilder);
+        assertThrows(IllegalStateException.class, progress::trackerBuilder);
     }
 
     @Test

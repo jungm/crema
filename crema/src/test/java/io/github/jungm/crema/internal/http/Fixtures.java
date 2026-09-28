@@ -72,7 +72,7 @@ final class Fixtures {
 
         @Tool(description = "Progress")
         public String test_tool_with_progress(Progress progress) throws Exception {
-            for (int i = 0; i <= 100; i += 50) {
+            for (int i = 0; i <= 100 && progress.token().isPresent(); i += 50) {
                 progress.notificationBuilder().setProgress(i).setTotal(100).build().<CompletableFuture<Void>>send()
                         .get();
             }

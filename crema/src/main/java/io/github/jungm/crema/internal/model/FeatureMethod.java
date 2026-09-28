@@ -3,6 +3,7 @@ package io.github.jungm.crema.internal.model;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.lang.reflect.Parameter;
+import java.lang.reflect.UndeclaredThrowableException;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Set;
@@ -63,7 +64,8 @@ public final class FeatureMethod {
     /**
      * Invokes the method on a fresh instance and, if it returns a {@link CompletionStage}, awaits its result.
      *
-     * @throws Exception whatever the method or the awaited stage throws
+     * @throws Exception whatever the method or the awaited stage throws; an {@link Error} propagates as is, and any
+     *         other {@code Throwable} is wrapped in an {@link UndeclaredThrowableException}
      */
     public Object invoke(Object[] args) throws Exception {
         try (InstanceSource.Handle handle = instances.acquire()) {
@@ -106,7 +108,10 @@ public final class FeatureMethod {
         if (cause instanceof Error error) {
             throw error;
         }
-        return (Exception) cause;
+        if (cause instanceof Exception exception) {
+            return exception;
+        }
+        return new UndeclaredThrowableException(cause);
     }
 
     @Override

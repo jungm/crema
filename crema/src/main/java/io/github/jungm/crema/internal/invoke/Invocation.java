@@ -67,7 +67,8 @@ public final class Invocation {
     }
 
     /**
-     * Arguments from a JSON object, bound to the parameter types.
+     * Arguments from a JSON object, bound to the parameter types. A JSON {@code null} for a required Argument
+     * counts as missing, unless {@code null} is a value of its type.
      *
      * @param json the {@code arguments} object, or {@code null} when the request has none
      */
@@ -76,6 +77,10 @@ public final class Invocation {
             JsonValue value = json == null ? null : json.get(argument.name());
             if (value == null) {
                 return absent(argument, binder);
+            }
+            if (value.getValueType() == JsonValue.ValueType.NULL && argument.required()
+                    && !binder.acceptsNull(argument.type())) {
+                throw missing(argument);
             }
             try {
                 return binder.bind(value, argument.type());
@@ -86,8 +91,8 @@ public final class Invocation {
     }
 
     /**
-     * Arguments from string values, such as Prompt arguments and URI template variables. A {@code String}
-     * parameter takes the value as is; other types parse it like a {@code defaultValue}.
+     * Arguments from string values, such as Prompt arguments and URI template variables, bound with
+     * {@link ArgumentBinder#bindString(String, java.lang.reflect.Type)}.
      */
     public static Function<Param.Argument, Object> fromStrings(Map<String, String> strings, ArgumentBinder binder) {
         return argument -> {
@@ -95,11 +100,8 @@ public final class Invocation {
             if (value == null) {
                 return absent(argument, binder);
             }
-            if (argument.type() == String.class) {
-                return value;
-            }
             try {
-                return binder.bindDefault(value, argument.type());
+                return binder.bindString(value, argument.type());
             } catch (BindingException e) {
                 throw e.atMember(argument.name());
             }
@@ -111,8 +113,12 @@ public final class Invocation {
             return binder.bindDefault(argument.defaultValue(), argument.type());
         }
         if (argument.required()) {
-            throw new BindingException("Missing required argument '" + argument.name() + "'");
+            throw missing(argument);
         }
         return binder.absent(argument.type());
+    }
+
+    private static BindingException missing(Param.Argument argument) {
+        return new BindingException("Missing required argument '" + argument.name() + "'");
     }
 }

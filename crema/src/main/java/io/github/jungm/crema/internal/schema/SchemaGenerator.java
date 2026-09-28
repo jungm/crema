@@ -117,8 +117,8 @@ public final class SchemaGenerator {
 
     /**
      * Returns the schema of the JSON that JSON-B writes for values of {@code type}, for a Tool's
-     * {@code outputSchema}. The schema is returned as is even if its root is not an object; see
-     * {@link #isObjectSchema(Type)}.
+     * {@code outputSchema}. The root may describe any JSON value, such as an array or a string, since structured
+     * content may be any JSON value; the schema itself is always a JSON object.
      */
     public JsonObject schemaFor(Type type) {
         Type resolved = Types.resolve(type);
@@ -133,16 +133,6 @@ public final class SchemaGenerator {
         JsonObjectBuilder root = json.createObjectBuilder(schema);
         run.addDefinitions(root);
         return root.build();
-    }
-
-    /**
-     * Returns whether JSON-B always writes values of {@code type} as JSON objects, as MCP requires for the
-     * structured content of a Tool with an {@code outputSchema}. False for {@code Optional} types, since an empty
-     * optional is written as {@code null}.
-     */
-    public boolean isObjectSchema(Type type) {
-        JsonValue schemaType = schemaFor(type).get("type");
-        return schemaType instanceof JsonString && "object".equals(((JsonString) schemaType).getString());
     }
 
     private enum Kind {

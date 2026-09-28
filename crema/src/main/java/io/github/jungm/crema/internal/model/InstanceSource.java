@@ -18,20 +18,4 @@ public interface InstanceSource {
         @Override
         void close();
     }
-
-    /**
-     * A source that always yields the same instance.
-     */
-    static InstanceSource of(Object instance) {
-        return () -> new Handle() {
-            @Override
-            public Object get() {
-                return instance;
-            }
-
-            @Override
-            public void close() {
-            }
-        };
-    }
 }

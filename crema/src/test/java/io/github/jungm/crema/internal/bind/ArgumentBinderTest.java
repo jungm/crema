@@ -247,6 +247,20 @@ class ArgumentBinderTest {
     }
 
     @Test
+    void stringValues() {
+        Type optional = new TypeLiteral<Optional<String>>() { }.type();
+        for (String raw : List.of("hello", "\"hello\"", "123", "null", "", "[1]")) {
+            assertEquals(raw, binder.bindString(raw, String.class), raw);
+            assertEquals(raw, binder.bindString(raw, CharSequence.class), raw);
+            assertEquals(Optional.of(raw), binder.bindString(raw, optional), raw);
+        }
+        assertEquals(10, binder.bindString("10", int.class));
+        assertEquals(Color.GREEN, binder.bindString("GREEN", Color.class));
+        assertEquals(Optional.of(Color.RED), binder.bindString("\"RED\"",
+                new TypeLiteral<Optional<Color>>() { }.type()));
+    }
+
+    @Test
     void invalidDefaultValues() {
         assertEquals("invalid default value \"abc\": not a JSON value",
                 assertThrows(BindingException.class, () -> binder.bindDefault("abc", int.class)).getMessage());
