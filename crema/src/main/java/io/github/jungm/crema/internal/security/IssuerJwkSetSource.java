@@ -1,15 +1,11 @@
 package io.github.jungm.crema.internal.security;
 
 import java.io.IOException;
-import java.io.InputStream;
 import java.net.MalformedURLException;
 import java.net.URI;
 import java.net.URISyntaxException;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
-import java.time.Duration;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicReference;
 
 import com.nimbusds.jose.KeySourceException;
 import com.nimbusds.jose.jwk.JWKSet;
@@ -28,54 +24,45 @@ import jakarta.json.JsonString;
  * The JWK set of an Authorization Server whose JWK set URL is read from its metadata: OpenID Connect Discovery
  * ({@code <issuer>/.well-known/openid-configuration}), falling back to RFC 8414
  * ({@code /.well-known/oauth-authorization-server} inserted before the issuer's path). The metadata's
- * {@code issuer} must equal the configured one. Once the JWK set URL is known, Nimbus'
- * {@link URLBasedJWKSetSource} retrieves the keys; Nimbus' caching, rate limiting, retrying and outage tolerance wrap
- * this source, so they apply to the metadata retrieval as well.
+ * {@code issuer} must equal the configured one. The metadata and the keys are retrieved with the same Nimbus
+ * {@link ResourceRetriever}, so the same timeouts and size limit apply to both; once the JWK set URL is known,
+ * Nimbus' {@link URLBasedJWKSetSource} retrieves the keys. Nimbus' caching, rate limiting, retrying and outage
+ * tolerance wrap this source, so they apply to the metadata retrieval as well.
+ * <p>
+ * No lock is held while the metadata is retrieved: concurrent first retrievals may each read the metadata, and
+ * the first JWK set URL found is kept.
  */
 final class IssuerJwkSetSource implements JWKSetSource<SecurityContext> {
 
     private final String issuer;
     private final ResourceRetriever retriever;
-    private final Duration timeout;
-    private final int sizeLimit;
-    private volatile JWKSetSource<SecurityContext> delegate;
+    private final AtomicReference<JWKSetSource<SecurityContext>> delegate = new AtomicReference<>();
 
-    /**
-     * @param timeout the connect and read timeout of the metadata request
-     * @param sizeLimit the maximum size of the metadata document, in bytes
-     */
-    IssuerJwkSetSource(String issuer, ResourceRetriever retriever, Duration timeout, int sizeLimit) {
+    IssuerJwkSetSource(String issuer, ResourceRetriever retriever) {
         this.issuer = issuer;
         this.retriever = retriever;
-        this.timeout = timeout;
-        this.sizeLimit = sizeLimit;
     }
 
     @Override
     public JWKSet getJWKSet(JWKSetCacheRefreshEvaluator refreshEvaluator, long currentTime,
             SecurityContext context) throws KeySourceException {
-        JWKSetSource<SecurityContext> source = delegate;
+        JWKSetSource<SecurityContext> source = delegate.get();
         if (source == null) {
-            synchronized (this) {
-                source = delegate;
-                if (source == null) {
-                    URI jwksUri = discoverJwksUri();
-                    try {
-                        source = new URLBasedJWKSetSource<>(jwksUri.toURL(), retriever);
-                    } catch (MalformedURLException | IllegalArgumentException e) {
-                        throw new JWKSetRetrievalException("The jwks_uri " + jwksUri + " of issuer " + issuer
-                                + " isn't a valid URL", e);
-                    }
-                    delegate = source;
-                }
+            URI jwksUri = discoverJwksUri();
+            try {
+                delegate.compareAndSet(null, new URLBasedJWKSetSource<>(jwksUri.toURL(), retriever));
+            } catch (MalformedURLException | IllegalArgumentException e) {
+                throw new JWKSetRetrievalException("The jwks_uri " + jwksUri + " of issuer " + issuer
+                        + " isn't a valid URL", e);
             }
+            source = delegate.get();
         }
         return source.getJWKSet(refreshEvaluator, currentTime, context);
     }
 
     @Override
     public void close() throws IOException {
-        JWKSetSource<SecurityContext> source = delegate;
+        JWKSetSource<SecurityContext> source = delegate.get();
         if (source != null) {
             source.close();
         }
@@ -96,19 +83,14 @@ final class IssuerJwkSetSource implements JWKSetSource<SecurityContext> {
     }
 
     private URI discoverJwksUri() throws KeySourceException {
-        HttpClient http = HttpClient.newBuilder().connectTimeout(timeout)
-                .followRedirects(HttpClient.Redirect.NEVER).build();
         StringBuilder failures = new StringBuilder();
         for (URI url : metadataUrls(issuer)) {
             JsonObject metadata;
             try {
-                metadata = fetch(http, url);
+                metadata = fetch(url);
             } catch (IOException e) {
                 failures.append("; ").append(url).append(": ").append(e.getMessage());
                 continue;
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                throw new JWKSetRetrievalException("Interrupted while reading the metadata of issuer " + issuer, e);
             }
             if (!(metadata.get("issuer") instanceof JsonString metadataIssuer)
                     || !metadataIssuer.getString().equals(issuer)) {
@@ -132,25 +114,15 @@ final class IssuerJwkSetSource implements JWKSetSource<SecurityContext> {
         throw new JWKSetRetrievalException("Couldn't read the metadata of issuer " + issuer + failures, null);
     }
 
-    private JsonObject fetch(HttpClient http, URI url) throws IOException, InterruptedException {
-        HttpResponse<InputStream> response = http.send(HttpRequest.newBuilder(url).timeout(timeout)
-                .header("Accept", "application/json").GET().build(), HttpResponse.BodyHandlers.ofInputStream());
-        try (InputStream body = response.body()) {
-            if (response.statusCode() != 200) {
-                throw new IOException("HTTP " + response.statusCode());
+    private JsonObject fetch(URI url) throws IOException {
+        String content = retriever.retrieveResource(url.toURL()).getContent();
+        try {
+            if (Json.parse(content) instanceof JsonObject object) {
+                return object;
             }
-            byte[] bytes = body.readNBytes(sizeLimit + 1);
-            if (bytes.length > sizeLimit) {
-                throw new IOException("the document exceeds " + sizeLimit + " bytes");
-            }
-            try {
-                if (Json.parse(bytes) instanceof JsonObject object) {
-                    return object;
-                }
-            } catch (RuntimeException e) {
-                throw new IOException("the document isn't JSON: " + e.getMessage());
-            }
-            throw new IOException("the document isn't a JSON object");
+        } catch (RuntimeException e) {
+            throw new IOException("the document isn't JSON: " + e.getMessage());
         }
+        throw new IOException("the document isn't a JSON object");
     }
 }

@@ -10,6 +10,8 @@ import java.time.Instant;
 import java.util.Date;
 import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 
@@ -44,6 +46,8 @@ final class FakeAuthorizationServer implements AutoCloseable {
     private volatile boolean jwksDown;
     private volatile boolean oidcDiscovery = true;
     private volatile String advertisedIssuer;
+    private volatile boolean metadataStalled;
+    private final AtomicInteger metadataRequests = new AtomicInteger();
     final RSAKey rsa = rsa("rsa-1");
     final ECKey ec = ec("ec-1");
 
@@ -55,6 +59,11 @@ final class FakeAuthorizationServer implements AutoCloseable {
         }
         published = List.of(rsa.toPublicJWK(), ec.toPublicJWK());
         server.createContext("/", this::handle);
+        server.setExecutor(Executors.newCachedThreadPool(runnable -> {
+            Thread thread = new Thread(runnable, "fake-authorization-server");
+            thread.setDaemon(true);
+            return thread;
+        }));
         server.start();
     }
 
@@ -86,6 +95,18 @@ final class FakeAuthorizationServer implements AutoCloseable {
      */
     void oidcDiscovery(boolean enabled) {
         oidcDiscovery = enabled;
+    }
+
+    /**
+     * Whether metadata responses stall after their headers and the first bytes of the body, until this is
+     * switched off again.
+     */
+    void stallMetadata(boolean stall) {
+        metadataStalled = stall;
+    }
+
+    int metadataRequests() {
+        return metadataRequests.get();
     }
 
     /**
@@ -178,10 +199,14 @@ final class FakeAuthorizationServer implements AutoCloseable {
                 + "\"authorization_endpoint\":\"" + issuer + "/authorize\","
                 + "\"token_endpoint\":\"" + issuer + "/token\","
                 + "\"jwks_uri\":\"" + jwksUri() + "\"}";
-        if (path.equals("/realm/.well-known/openid-configuration") && oidcDiscovery) {
-            respond(exchange, 200, metadata);
-        } else if (path.equals("/.well-known/oauth-authorization-server/realm")) {
-            respond(exchange, 200, metadata);
+        if (path.equals("/realm/.well-known/openid-configuration") && oidcDiscovery
+                || path.equals("/.well-known/oauth-authorization-server/realm")) {
+            metadataRequests.incrementAndGet();
+            if (metadataStalled) {
+                stall(exchange, metadata);
+            } else {
+                respond(exchange, 200, metadata);
+            }
         } else if (path.equals("/realm/jwks")) {
             jwksRequests.incrementAndGet();
             if (jwksDown) {
@@ -191,6 +216,21 @@ final class FakeAuthorizationServer implements AutoCloseable {
             }
         } else {
             respond(exchange, 404, "{}");
+        }
+    }
+
+    private void stall(HttpExchange exchange, String body) throws IOException {
+        exchange.getResponseHeaders().set("Content-Type", "application/json");
+        exchange.sendResponseHeaders(200, 0);
+        try (OutputStream out = exchange.getResponseBody()) {
+            out.write(body.substring(0, 10).getBytes(StandardCharsets.UTF_8));
+            out.flush();
+            long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(30);
+            while (metadataStalled && System.nanoTime() < deadline) {
+                Thread.sleep(50);
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
         }
     }
 

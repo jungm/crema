@@ -320,6 +320,24 @@ class BearerTokenTest {
     }
 
     @Test
+    void aStalledMetadataResponseTimesOutAndDiscoveryIsRetried() throws InterruptedException {
+        as.stallMetadata(true);
+        fixture(true);
+        long start = System.nanoTime();
+        assertInvalid(as.token(ENDPOINT));
+        long elapsed = java.util.concurrent.TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start);
+        assertTrue(elapsed < 15_000, "the read timeout bounds the metadata retrieval, but it took " + elapsed + " ms");
+        assertTrue(as.metadataRequests() > 0);
+        as.stallMetadata(false);
+        int status = 0;
+        for (long deadline = System.nanoTime() + 10_000_000_000L; status != 200 && System.nanoTime() < deadline;) {
+            Thread.sleep(Fixture.FAST.rateLimit().toMillis() + 100);
+            status = whoamiWithToken(as.token(ENDPOINT)).status();
+        }
+        assertEquals(200, status, "the metadata is read again once it responds");
+    }
+
+    @Test
     void metadataNamingAnotherIssuerIsRejected() {
         as.advertiseIssuer("https://evil.example.com/realm");
         fixture(true);

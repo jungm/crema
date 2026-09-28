@@ -91,8 +91,7 @@ final class TokenValidator implements Closeable {
                 throw new IllegalArgumentException(e);
             }
         } else {
-            source = new IssuerJwkSetSource(protection.issuer(), retriever, tuning.httpTimeout(),
-                    tuning.sizeLimit());
+            source = new IssuerJwkSetSource(protection.issuer(), retriever);
         }
         ExecutorService refresher = Executors.newSingleThreadExecutor(runnable -> {
             Thread thread = new Thread(runnable, "crema-jwks-refresh-" + protection.server());
