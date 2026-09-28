@@ -266,6 +266,15 @@ class TransportIT {
     }
 
     @Test
+    void matrixParametersDontBypassTheChecks() {
+        McpClient matrix = McpClient.at(base, "mcp/;x=1");
+        Exchange origin = matrix.post("tools/list").header("Origin", "https://evil.example.com").send();
+        assertTrue(origin.status() == 403 || origin.status() == 404, origin::describe);
+        Exchange missingHeader = matrix.post("tools/list").header("Mcp-Method", null).send();
+        assertTrue(missingHeader.status() == 400 || missingHeader.status() == 404, missingHeader::describe);
+    }
+
+    @Test
     void dnsRebindingIsForbidden() {
         Exchange exchange = mcp.post("tools/list").header("Host", "evil.example.com")
                 .header("Origin", "http://evil.example.com").send();

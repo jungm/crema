@@ -71,18 +71,19 @@ class CoexistenceIT {
     void applicationRootResourceStillServesGet() {
         HttpResponse<String> response = api("GET", "api/", null, Map.of("Accept", "application/json"));
         assertEquals(200, response.statusCode(), response::body);
-        JsonObject status = parse(response.body());
-        assertEquals("shop", status.getString("service_name"), "the application's JSON-B resolver applies");
+        assertApplicationJsonb(parse(response.body()), "shop", response.body());
         assertEquals("yes", response.headers().firstValue(AppProviders.HEADER).orElse(null));
         assertEquals(200, api("GET", "api", null, Map.of("Accept", "application/json")).statusCode());
     }
 
     @Test
     void applicationRootResourceStillServesPost() {
-        HttpResponse<String> response = api("POST", "api/", "{\"service_name\":\"x\",\"open_orders\":1}",
+        // both naming styles, so that the body binds whether or not TomEE applies the application's resolver
+        HttpResponse<String> response = api("POST", "api/",
+                "{\"service_name\":\"x\",\"open_orders\":1,\"serviceName\":\"x\",\"openOrders\":1}",
                 Map.of("Content-Type", "application/json", "Accept", "application/json"));
         assertEquals(200, response.statusCode(), response::body);
-        assertEquals("x-echo", parse(response.body()).getString("service_name"));
+        assertApplicationJsonb(parse(response.body()), "x-echo", response.body());
     }
 
     @Test
@@ -141,6 +142,19 @@ class CoexistenceIT {
                 "error response");
         assertTrue(mcp.post("tools/call").params(Json.createObjectBuilder().add("name", "progress").build())
                 .meta("progressToken", "p").send().header(AppProviders.HEADER).isEmpty(), "SSE response");
+    }
+
+    /**
+     * The application's JSON-B resolver (snake_case) applies to its API. TomEE ignores it once another WAR on the
+     * same server has used JSON-B through JAX-RS (so the order of the test classes decides); there it is recorded.
+     */
+    private static void assertApplicationJsonb(JsonObject status, String serviceName, String body) {
+        if (Findings.RUNTIME.equals("tomee") && !status.containsKey("service_name")) {
+            FINDINGS.record("application ContextResolver<Jsonb> on /api", "ignored: " + body);
+            assertEquals(Json.createValue(serviceName), status.get("serviceName"), body);
+            return;
+        }
+        assertEquals(Json.createValue(serviceName), status.get("service_name"), body);
     }
 
     private HttpResponse<String> api(String method, String path, String body, Map<String, String> headers) {

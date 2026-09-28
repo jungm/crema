@@ -18,6 +18,7 @@ import jakarta.ws.rs.core.Context;
 import jakarta.ws.rs.core.HttpHeaders;
 import jakarta.ws.rs.core.MultivaluedMap;
 import jakarta.ws.rs.core.Response;
+import jakarta.ws.rs.core.UriInfo;
 
 /**
  * Handles every request to the MCP Endpoint before resource matching: the {@code Origin} check and
@@ -39,8 +40,7 @@ public class McpEndpointFilter implements ContainerRequestFilter {
 
     @Override
     public void filter(ContainerRequestContext request) throws IOException {
-        String path = request.getUriInfo().getPath();
-        if (!path.isEmpty() && !path.equals("/")) {
+        if (!isEndpoint(request.getUriInfo())) {
             return;
         }
         Optional<JaxRs.Target> target = JaxRs.target(configuration);
@@ -73,6 +73,15 @@ public class McpEndpointFilter implements ContainerRequestFilter {
         MultivaluedMap<String, String> requestHeaders = request.getHeaders();
         requestHeaders.keySet().removeIf(HttpHeaders.CONTENT_TYPE::equalsIgnoreCase);
         requestHeaders.putSingle(HttpHeaders.CONTENT_TYPE, McpEndpoint.PLANNED);
+    }
+
+    /**
+     * Whether a request addresses the MCP Endpoint, the application path itself: every path segment is empty,
+     * whatever matrix parameters it carries ({@code /mcp}, {@code /mcp/}, {@code /mcp/;x=1}), which is what
+     * {@code @Path("")} matches.
+     */
+    static boolean isEndpoint(UriInfo uriInfo) {
+        return uriInfo.getPathSegments().stream().allMatch(segment -> segment.getPath().isEmpty());
     }
 
     private void abort(ContainerRequestContext request, HttpReply reply) throws IOException {
