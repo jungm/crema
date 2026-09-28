@@ -12,7 +12,7 @@ import org.mcpjava.server.progress.Progress;
 import io.github.jungm.crema.internal.bind.ArgumentBinder;
 import io.github.jungm.crema.internal.bind.BindingException;
 import io.github.jungm.crema.internal.model.FeatureMethod;
-import io.github.jungm.crema.internal.model.Param;
+import io.github.jungm.crema.internal.model.Parameter;
 import io.github.jungm.crema.internal.security.Caller;
 import jakarta.json.JsonObject;
 import jakarta.json.JsonValue;
@@ -44,22 +44,22 @@ public final class Invocation {
      * @throws BindingException if an Argument is missing or can't be bound, before the method is invoked
      * @throws Exception whatever the method throws
      */
-    public Object invoke(FeatureMethod method, Function<Param.Argument, Object> arguments) throws Exception {
-        List<Param> params = method.params();
-        Object[] values = new Object[params.size()];
+    public Object invoke(FeatureMethod method, Function<Parameter.Argument, Object> arguments) throws Exception {
+        List<Parameter> parameters = method.parameters();
+        Object[] values = new Object[parameters.size()];
         for (int i = 0; i < values.length; i++) {
-            Param param = params.get(i);
-            if (param instanceof Param.Argument argument) {
+            Parameter parameter = parameters.get(i);
+            if (parameter instanceof Parameter.Argument argument) {
                 values[i] = arguments.apply(argument);
             } else {
-                values[i] = injected((Param.Injected) param);
+                values[i] = injected((Parameter.Injected) parameter);
             }
         }
         return method.invoke(values);
     }
 
-    private Object injected(Param.Injected param) {
-        switch (param) {
+    private Object injected(Parameter.Injected parameter) {
+        switch (parameter) {
             case MCP_REQUEST:
                 return request;
             case PROGRESS:
@@ -73,7 +73,7 @@ public final class Invocation {
             case COMPLETION_CONTEXT:
                 return completionContext;
             default:
-                throw new IllegalStateException("Unknown Injected Parameter " + param);
+                throw new IllegalStateException("Unknown Injected Parameter " + parameter);
         }
     }
 
@@ -95,7 +95,7 @@ public final class Invocation {
      *
      * @param json the {@code arguments} object, or {@code null} when the request has none
      */
-    public static Function<Param.Argument, Object> fromJson(JsonObject json, ArgumentBinder binder) {
+    public static Function<Parameter.Argument, Object> fromJson(JsonObject json, ArgumentBinder binder) {
         return argument -> {
             JsonValue value = json == null ? null : json.get(argument.name());
             if (value == null) {
@@ -117,7 +117,7 @@ public final class Invocation {
      * Arguments from string values, such as Prompt arguments and URI template variables, bound with
      * {@link ArgumentBinder#bindString(String, java.lang.reflect.Type)}.
      */
-    public static Function<Param.Argument, Object> fromStrings(Map<String, String> strings, ArgumentBinder binder) {
+    public static Function<Parameter.Argument, Object> fromStrings(Map<String, String> strings, ArgumentBinder binder) {
         return argument -> {
             String value = strings.get(argument.name());
             if (value == null) {
@@ -131,7 +131,7 @@ public final class Invocation {
         };
     }
 
-    private static Object absent(Param.Argument argument, ArgumentBinder binder) {
+    private static Object absent(Parameter.Argument argument, ArgumentBinder binder) {
         if (argument.defaultValue() != null) {
             return binder.bindDefault(argument.defaultValue(), argument.type());
         }
@@ -141,7 +141,7 @@ public final class Invocation {
         return binder.absent(argument.type());
     }
 
-    private static BindingException missing(Param.Argument argument) {
+    private static BindingException missing(Parameter.Argument argument) {
         return new BindingException("Missing required argument '" + argument.name() + "'");
     }
 }

@@ -3,7 +3,6 @@ package io.github.jungm.crema.internal.model;
 import java.lang.annotation.Annotation;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
-import java.lang.reflect.Parameter;
 import java.lang.reflect.Type;
 import java.security.Principal;
 import java.time.OffsetDateTime;
@@ -97,8 +96,8 @@ public final class FeatureScanner {
             errors.add("must not be private");
         } else {
             Class<? extends Annotation> kind = kinds.get(0);
-            List<Param> params = params(method, kind, errors);
-            FeatureMethod featureMethod = new FeatureMethod(beanClass, method, params, servers(method), instances);
+            List<Parameter> parameters = parameters(method, kind, errors);
+            FeatureMethod featureMethod = new FeatureMethod(beanClass, method, parameters, servers(method), instances);
             try {
                 Feature feature = feature(kind, method, featureMethod, errors);
                 if (errors.isEmpty()) {
@@ -195,7 +194,7 @@ public final class FeatureScanner {
         UriTemplate uriTemplate = UriTemplate.parse(template.uriTemplate());
         Set<String> variables = new LinkedHashSet<>(uriTemplate.variables());
         Set<String> arguments = new LinkedHashSet<>();
-        for (Param.Argument argument : featureMethod.arguments()) {
+        for (Parameter.Argument argument : featureMethod.arguments()) {
             if (argument.type() != String.class) {
                 errors.add("parameter '" + argument.name() + "' must be a String, like every URI template variable");
             }
@@ -229,10 +228,10 @@ public final class FeatureScanner {
         }
         String name = name(prompt.name(), Prompt.ELEMENT_NAME, method);
         JsonObjectBuilder json = describe(Json.object().add("name", name), prompt.title(), prompt.description());
-        List<Param.Argument> arguments = featureMethod.arguments();
+        List<Parameter.Argument> arguments = featureMethod.arguments();
         if (!arguments.isEmpty()) {
             JsonArrayBuilder array = Json.FACTORY.createArrayBuilder();
-            for (Param.Argument argument : arguments) {
+            for (Parameter.Argument argument : arguments) {
                 JsonObjectBuilder item = Json.object().add("name", argument.name());
                 if (argument.title() != null) {
                     item.add("title", argument.title());
@@ -255,7 +254,7 @@ public final class FeatureScanner {
             errors.add("Completion Methods must return String, List<String> or CompletionResult, not "
                     + type.getTypeName());
         }
-        List<Param.Argument> arguments = featureMethod.arguments();
+        List<Parameter.Argument> arguments = featureMethod.arguments();
         if (arguments.size() != 1 || arguments.get(0).type() != String.class) {
             errors.add("Completion Methods must have exactly one String Argument, the value to complete, but have "
                     + arguments.stream().map(a -> a.type().getTypeName() + " " + a.name()).toList());
@@ -264,46 +263,46 @@ public final class FeatureScanner {
         return new Feature.Completion(kind, target, arguments.get(0).name(), featureMethod);
     }
 
-    private List<Param> params(Method method, Class<? extends Annotation> kind, List<String> errors) {
+    private List<Parameter> parameters(Method method, Class<? extends Annotation> kind, List<String> errors) {
         boolean completion = kind == CompletePrompt.class || kind == CompleteResourceTemplate.class;
-        List<Param> params = new ArrayList<>();
+        List<Parameter> result = new ArrayList<>();
         Set<String> names = new HashSet<>();
-        Parameter[] parameters = method.getParameters();
+        java.lang.reflect.Parameter[] parameters = method.getParameters();
         Type[] types = method.getGenericParameterTypes();
         for (int i = 0; i < parameters.length; i++) {
-            Parameter parameter = parameters[i];
+            java.lang.reflect.Parameter parameter = parameters[i];
             Class<?> type = parameter.getType();
             if (type == McpRequest.class) {
-                params.add(Param.Injected.MCP_REQUEST);
+                result.add(Parameter.Injected.MCP_REQUEST);
             } else if (type == Progress.class) {
-                params.add(Param.Injected.PROGRESS);
+                result.add(Parameter.Injected.PROGRESS);
             } else if (type == Cancellation.class) {
-                params.add(Param.Injected.CANCELLATION);
+                result.add(Parameter.Injected.CANCELLATION);
             } else if (type == McpCaller.class) {
-                params.add(Param.Injected.CALLER);
+                result.add(Parameter.Injected.CALLER);
             } else if (type == Principal.class) {
-                params.add(Param.Injected.PRINCIPAL);
+                result.add(Parameter.Injected.PRINCIPAL);
             } else if (type == CompletionContext.class) {
                 if (!completion) {
                     errors.add("CompletionContext is only available to Completion Methods");
                 }
-                params.add(Param.Injected.COMPLETION_CONTEXT);
+                result.add(Parameter.Injected.COMPLETION_CONTEXT);
             } else {
-                Param.Argument argument = argument(parameter, types.length == parameters.length ? types[i] : type,
+                Parameter.Argument argument = argument(parameter, types.length == parameters.length ? types[i] : type,
                         kind, i, errors);
                 if (argument != null) {
                     if (!names.add(argument.name())) {
                         errors.add("more than one parameter has the Argument name '" + argument.name() + "'");
                     }
-                    params.add(argument);
+                    result.add(argument);
                 }
             }
         }
-        return params;
+        return result;
     }
 
-    private Param.Argument argument(Parameter parameter, Type type, Class<? extends Annotation> kind, int index,
-            List<String> errors) {
+    private Parameter.Argument argument(java.lang.reflect.Parameter parameter, Type type,
+            Class<? extends Annotation> kind, int index, List<String> errors) {
         String annotatedName = null;
         String title = null;
         String description = null;
@@ -359,7 +358,7 @@ public final class FeatureScanner {
                     + " and required = false, so it needs a defaultValue or a wrapper type");
         }
         required = required && defaultValue == null && !Types.isOptional(type);
-        return new Param.Argument(name, type, required, defaultValue, title, description);
+        return new Parameter.Argument(name, type, required, defaultValue, title, description);
     }
 
     private void finish(JsonObjectBuilder json, Method method, FeatureType type, String name) {

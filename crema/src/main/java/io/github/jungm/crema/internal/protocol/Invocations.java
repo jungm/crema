@@ -19,7 +19,7 @@ import io.github.jungm.crema.internal.invoke.ReturnConversion;
 import io.github.jungm.crema.internal.json.Json;
 import io.github.jungm.crema.internal.json.ProtocolJson;
 import io.github.jungm.crema.internal.model.Feature;
-import io.github.jungm.crema.internal.model.Param;
+import io.github.jungm.crema.internal.model.Parameter;
 import jakarta.json.JsonObject;
 import jakarta.json.JsonObjectBuilder;
 import jakarta.json.JsonString;
@@ -191,7 +191,7 @@ final class Invocations {
      * @throws BindingException if an Argument is missing or can't be bound
      * @throws McpError {@code -32603} if the method fails
      */
-    private static Object invoke(Call call, Feature feature, Function<Param.Argument, Object> arguments,
+    private static Object invoke(Call call, Feature feature, Function<Parameter.Argument, Object> arguments,
             CompletionContextImpl context) {
         try {
             return call.invocation(context).invoke(feature.method(), arguments);

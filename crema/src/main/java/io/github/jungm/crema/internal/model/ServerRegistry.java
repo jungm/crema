@@ -156,7 +156,7 @@ public final class ServerRegistry {
             what = "Prompt";
             arguments = features.stream().filter(Feature.Prompt.class::isInstance)
                     .filter(f -> f.name().equals(completion.target())).findFirst()
-                    .map(f -> f.method().arguments().stream().map(Param.Argument::name).toList());
+                    .map(f -> f.method().arguments().stream().map(Parameter.Argument::name).toList());
         } else {
             what = "Resource Template";
             arguments = features.stream().filter(Feature.ResourceTemplate.class::isInstance)
