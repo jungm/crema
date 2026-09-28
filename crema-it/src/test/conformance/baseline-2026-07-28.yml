@@ -1,0 +1,23 @@
+# Scenarios and checks of @modelcontextprotocol/conformance --requirements 2026-07-28 that Crema fails by design.
+# Nothing else belongs here: every other scored scenario must pass. See docs/design.md §2 and §8 and
+# docs/protocol-notes.md "Test tooling".
+server:
+  # MRTR (multi round-trip requests, `resultType: "input_required"`) is out of scope for milestone 1 (design §8).
+  - input-required-result-basic-elicitation
+  - input-required-result-basic-sampling
+  - input-required-result-basic-list-roots
+  - input-required-result-request-state
+  - input-required-result-multiple-input-requests
+  - input-required-result-multi-round
+  - input-required-result-non-tool-request
+  - input-required-result-result-type
+  - input-required-result-tampered-state
+  - input-required-result-capability-check
+  # These two end with a WARNING rather than a FAILURE (no MRTR fixture tools, no InputRequiredResult), which this
+  # suite version also counts against the run.
+  - input-required-result-missing-input-response
+  - input-required-result-ignore-extra-params
+  # Application code can't raise MissingRequiredClientCapabilityError (-32021) (design §2): the org.mcpjava API's
+  # McpException carries no code or data, so test_missing_capability can only return a tool error.
+  - server-stateless:sep-2575-server-rejects-undeclared-capability
+  - server-stateless:sep-2575-missing-capability-http-400

@@ -38,7 +38,7 @@
             <property name="httpPort">${it.liberty.http.port}</property>
             <property name="deployType">dropins</property>
             <property name="serverStartTimeout">120</property>
-            <property name="appDeployTimeout">60</property>
+            <property name="appDeployTimeout">20</property>
         </configuration>
     </container>
 
@@ -49,7 +49,7 @@
             <property name="httpPort">${it.liberty.http.port}</property>
             <property name="deployType">dropins</property>
             <property name="serverStartTimeout">120</property>
-            <property name="appDeployTimeout">60</property>
+            <property name="appDeployTimeout">20</property>
         </configuration>
     </container>
 </arquillian>

@@ -1,145 +1,73 @@
 package io.github.jungm.crema.internal.http;
 
 import java.io.IOException;
-import java.io.InputStream;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
-import java.util.concurrent.CompletionStage;
-import java.util.function.Function;
 
+import io.github.jungm.crema.internal.model.McpServerModel;
+import io.github.jungm.crema.internal.protocol.Dispatcher;
+import io.github.jungm.crema.internal.protocol.Json;
+import io.github.jungm.crema.internal.protocol.McpError;
 import io.github.jungm.crema.internal.protocol.Request;
 import io.github.jungm.crema.internal.security.Caller;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.ws.rs.Consumes;
-import jakarta.ws.rs.DELETE;
-import jakarta.ws.rs.GET;
+import jakarta.ws.rs.NotFoundException;
 import jakarta.ws.rs.POST;
 import jakarta.ws.rs.Path;
-import jakarta.ws.rs.Produces;
 import jakarta.ws.rs.core.Configuration;
 import jakarta.ws.rs.core.Context;
-import jakarta.ws.rs.core.HttpHeaders;
-import jakarta.ws.rs.core.MediaType;
-import jakarta.ws.rs.core.Response;
-import jakarta.ws.rs.core.SecurityContext;
-import jakarta.ws.rs.core.UriInfo;
-import jakarta.ws.rs.sse.Sse;
-import jakarta.ws.rs.sse.SseEventSink;
 
 /**
- * The MCP Endpoint. {@link McpEndpointFilter} decides whether a {@code POST} is answered with JSON or with an SSE
- * stream and sets the {@code Accept} header accordingly, which selects the resource method. Outside an
- * {@code McpApplication} this resource answers {@code 404}.
+ * The MCP Endpoint. It executes what {@link McpEndpointFilter} has validated and planned: the filter passes the
+ * plan as a request property and sets {@code Content-Type} to {@link #PLANNED}. The response, JSON or an SSE
+ * stream, is written to the servlet response directly (see {@link JaxRs#write}).
+ * <p>
+ * An application's own scanning {@code Application} may pick this class up as well. There it has no {@code GET}
+ * method, and its only method consumes {@link #PLANNED}, a media type no client sends, so it never competes with
+ * the application's own root resource. Without a plan it answers {@code 404} there; in an {@code McpApplication}
+ * it fails closed with {@code 500} and {@code -32603}, since the request wasn't screened.
  */
 @Path("")
 public class McpEndpoint {
 
+    /**
+     * The request {@code Content-Type} that {@link McpEndpointFilter} sets for a planned request.
+     */
+    public static final String PLANNED = "application/x-crema-planned+json";
+
+    static final String PLAN_PROPERTY = "io.github.jungm.crema.plan";
     static final String X_ACCEL_BUFFERING = "X-Accel-Buffering";
 
-    @POST
-    @Consumes(MediaType.WILDCARD)
-    @Produces(MediaType.APPLICATION_JSON)
-    public Response post(InputStream body, @Context HttpHeaders httpHeaders, @Context SecurityContext security,
-            @Context UriInfo uriInfo, @Context Configuration configuration) throws IOException {
-        Optional<JaxRs.Target> target = JaxRs.target(configuration);
-        if (target.isEmpty()) {
-            return Response.status(Response.Status.NOT_FOUND).build();
-        }
-        McpTransport transport = target.get().transport();
-        Function<String, List<String>> headers = JaxRs.headers(httpHeaders.getRequestHeaders());
-        McpTransport.Screening screening = transport.screen(target.get().server(), JaxRs.first(headers, "Origin"),
-                JaxRs.caller(security, headers, uriInfo));
-        if (screening instanceof McpTransport.Reply rejected) {
-            return JaxRs.response(rejected.reply());
-        }
-        Caller caller = ((McpTransport.Admitted) screening).caller();
-        McpTransport.Plan plan = transport.plan(target.get().server(), body.readAllBytes(), headers, caller);
-        if (plan instanceof McpTransport.Reply reply) {
-            return JaxRs.response(reply.reply());
-        }
-        return JaxRs.response(transport.respond(target.get().server(), request(plan), caller));
+    /**
+     * The answer to a request that reaches this resource in an {@code McpApplication} without having been screened
+     * by {@link McpEndpointFilter}; it is never handled.
+     */
+    static final HttpReply UNSCREENED = HttpReply.json(500, Json.write(Dispatcher.error(null,
+            McpError.internal("Internal error")).message()));
+
+    /**
+     * A validated request and what is needed to handle it.
+     */
+    record Planned(McpTransport transport, McpServerModel server, McpTransport.Plan plan, Caller caller) {
     }
 
     @POST
-    @Consumes(MediaType.WILDCARD)
-    @Produces(MediaType.SERVER_SENT_EVENTS)
-    public void stream(InputStream body, @Context HttpHeaders httpHeaders, @Context SecurityContext security,
-            @Context UriInfo uriInfo, @Context Configuration configuration,
-            @Context HttpServletResponse servletResponse,
-            @Context SseEventSink sink, @Context Sse sse) throws IOException {
-        Optional<JaxRs.Target> target = JaxRs.target(configuration);
-        if (target.isEmpty()) {
-            sink.close();
+    @Consumes(PLANNED)
+    public void post(@Context HttpServletRequest servletRequest, @Context HttpServletResponse servletResponse,
+            @Context Configuration configuration) throws IOException {
+        if (!(servletRequest.getAttribute(PLAN_PROPERTY) instanceof Planned planned)) {
+            if (JaxRs.target(configuration).isEmpty()) {
+                throw new NotFoundException();
+            }
+            JaxRs.write(servletResponse, UNSCREENED);
             return;
         }
-        McpTransport transport = target.get().transport();
-        Function<String, List<String>> headers = JaxRs.headers(httpHeaders.getRequestHeaders());
-        McpTransport.Screening screening = transport.screen(target.get().server(), JaxRs.first(headers, "Origin"),
-                JaxRs.caller(security, headers, uriInfo));
-        Caller caller = screening instanceof McpTransport.Admitted admitted ? admitted.caller() : null;
-        McpTransport.Plan plan = screening instanceof McpTransport.Reply rejected ? rejected
-                : plan(transport, target.get(), body, headers, caller);
-        McpTransport.EventStream events = new McpTransport.EventStream() {
-            @Override
-            public CompletionStage<?> send(String json) {
-                return sink.send(sse.newEvent(json));
-            }
-
-            @Override
-            public void close() {
-                sink.close();
-            }
-        };
-        if (plan instanceof McpTransport.Reply reply) {
-            if (reply.reply().body() != null) {
-                events.send(reply.reply().body());
-            }
-            events.close();
-            return;
+        if (planned.plan() instanceof McpTransport.Stream stream) {
+            planned.transport().stream(planned.server(), stream.request(), planned.caller(),
+                    JaxRs.eventStream(servletResponse));
+        } else {
+            Request request = ((McpTransport.Respond) planned.plan()).request();
+            JaxRs.write(servletResponse, planned.transport().respond(planned.server(), request, planned.caller()));
         }
-        if (servletResponse != null) {
-            servletResponse.setHeader(X_ACCEL_BUFFERING, "no");
-        }
-        transport.stream(target.get().server(), request(plan), caller, events);
-    }
-
-    @GET
-    public Response get(@Context HttpHeaders httpHeaders, @Context SecurityContext security,
-            @Context UriInfo uriInfo, @Context Configuration configuration) {
-        return methodNotAllowed(httpHeaders, security, uriInfo, configuration);
-    }
-
-    @DELETE
-    public Response delete(@Context HttpHeaders httpHeaders, @Context SecurityContext security,
-            @Context UriInfo uriInfo, @Context Configuration configuration) {
-        return methodNotAllowed(httpHeaders, security, uriInfo, configuration);
-    }
-
-    private static Response methodNotAllowed(HttpHeaders httpHeaders, SecurityContext security, UriInfo uriInfo,
-            Configuration configuration) {
-        Optional<JaxRs.Target> target = JaxRs.target(configuration);
-        if (target.isEmpty()) {
-            return Response.status(Response.Status.NOT_FOUND).build();
-        }
-        Function<String, List<String>> headers = JaxRs.headers(httpHeaders.getRequestHeaders());
-        McpTransport.Screening screening = target.get().transport().screen(target.get().server(),
-                JaxRs.first(headers, "Origin"), JaxRs.caller(security, headers, uriInfo));
-        return JaxRs.response(screening instanceof McpTransport.Reply rejected ? rejected.reply()
-                : new HttpReply(405, Map.of(HttpHeaders.ALLOW, "POST"), null));
-    }
-
-    private static McpTransport.Plan plan(McpTransport transport, JaxRs.Target target, InputStream body,
-            Function<String, List<String>> headers, Caller caller) {
-        try {
-            return transport.plan(target.server(), body.readAllBytes(), headers, caller);
-        } catch (IOException e) {
-            return new McpTransport.Reply(new HttpReply(400, Map.of(), null));
-        }
-    }
-
-    private static Request request(McpTransport.Plan plan) {
-        return plan instanceof McpTransport.Stream stream ? stream.request()
-                : ((McpTransport.Respond) plan).request();
     }
 }
