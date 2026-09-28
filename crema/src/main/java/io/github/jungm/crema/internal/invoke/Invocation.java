@@ -91,8 +91,8 @@ public final class Invocation {
     }
 
     /**
-     * Arguments from string values, such as Prompt arguments and URI template variables. A {@code String}
-     * parameter takes the value as is; other types parse it like a {@code defaultValue}.
+     * Arguments from string values, such as Prompt arguments and URI template variables, bound with
+     * {@link ArgumentBinder#bindString(String, java.lang.reflect.Type)}.
      */
     public static Function<Param.Argument, Object> fromStrings(Map<String, String> strings, ArgumentBinder binder) {
         return argument -> {
@@ -100,11 +100,8 @@ public final class Invocation {
             if (value == null) {
                 return absent(argument, binder);
             }
-            if (argument.type() == String.class) {
-                return value;
-            }
             try {
-                return binder.bindDefault(value, argument.type());
+                return binder.bindString(value, argument.type());
             } catch (BindingException e) {
                 throw e.atMember(argument.name());
             }

@@ -159,6 +159,23 @@ public final class ArgumentBinder {
     }
 
     /**
+     * Binds an Argument that arrives as a string, such as a Prompt argument or a URI template variable. A
+     * {@code String} or {@code CharSequence} parameter (also wrapped in {@code Optional}) takes the string as is;
+     * other types parse it like a {@code defaultValue}.
+     *
+     * @throws BindingException if the string can't be bound
+     */
+    public Object bindString(String value, Type type) {
+        Type resolved = Types.resolve(type);
+        Type valueType = Types.isOptional(resolved) ? Types.optionalValueType(resolved) : resolved;
+        Class<?> raw = Types.rawType(valueType);
+        if (raw == String.class || raw == CharSequence.class) {
+            return bind(jsonb.jsonProvider().createValue(value), resolved);
+        }
+        return bindDefault(value, resolved);
+    }
+
+    /**
      * Returns the value of an absent Argument: {@code null}, or an empty {@code Optional*} for those types.
      *
      * @throws BindingException if {@code type} is primitive, since a primitive can't be absent
