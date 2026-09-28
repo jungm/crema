@@ -14,8 +14,10 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.Base64;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
@@ -129,6 +131,7 @@ public final class McpClient {
         private boolean withMeta = true;
         private boolean withParams = true;
         private final Map<String, String> headers = new LinkedHashMap<>();
+        private final List<Map.Entry<String, String>> repeated = new ArrayList<>();
         private String rawBody;
 
         private Post(String method) {
@@ -194,6 +197,12 @@ public final class McpClient {
             return this;
         }
 
+        /** Adds a further header field, after those set with {@link #header}, even one with the same name. */
+        public Post addHeader(String name, String value) {
+            repeated.add(Map.entry(name, value));
+            return this;
+        }
+
         /** Sends this body verbatim instead of the JSON-RPC request. */
         public Post body(String body) {
             this.rawBody = body;
@@ -233,6 +242,7 @@ public final class McpClient {
             HttpRequest.Builder request = HttpRequest.newBuilder(endpoint).timeout(Duration.ofSeconds(60))
                     .POST(HttpRequest.BodyPublishers.ofString(body));
             headers.forEach(request::header);
+            repeated.forEach(field -> request.header(field.getKey(), field.getValue()));
             try {
                 HttpResponse<String> response = HTTP.send(request.build(), HttpResponse.BodyHandlers.ofString());
                 return new Exchange(method, response);
