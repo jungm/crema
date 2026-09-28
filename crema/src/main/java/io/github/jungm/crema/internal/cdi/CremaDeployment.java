@@ -5,6 +5,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.function.Consumer;
 
+import org.mcpjava.server.Icon;
 import org.mcpjava.server.IconProvider;
 
 import io.github.jungm.crema.internal.config.CremaSettings;
@@ -93,7 +94,7 @@ public final class CremaDeployment {
         List<String> problems = new ArrayList<>();
         List<ServerRegistry.Declaration> declarations = new ArrayList<>();
         for (Application application : applications.applications()) {
-            List<org.mcpjava.server.Icon> icons = List.of();
+            List<Icon> icons = List.of();
             if (application.iconProvider() != null) {
                 try {
                     icons = catalog.icons().icons(application.iconProvider(), null,

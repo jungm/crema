@@ -1,6 +1,7 @@
 package io.github.jungm.crema.internal.protocol;
 
 import java.util.Collection;
+import java.util.function.Function;
 
 import io.github.jungm.crema.internal.model.Feature;
 import io.github.jungm.crema.internal.model.McpServerModel;
@@ -57,7 +58,7 @@ final class Listings {
     }
 
     private static <F extends Feature> JsonObject list(Call call, String key, Collection<F> features,
-            java.util.function.Function<F, JsonObject> definition) {
+            Function<F, JsonObject> definition) {
         call.rejectCursor();
         JsonArrayBuilder array = Json.FACTORY.createArrayBuilder();
         for (F feature : features) {

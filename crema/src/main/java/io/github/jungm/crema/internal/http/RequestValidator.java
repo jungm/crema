@@ -6,6 +6,7 @@ import java.nio.charset.CodingErrorAction;
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
 import java.util.List;
+import java.util.NoSuchElementException;
 import java.util.Set;
 import java.util.function.Function;
 
@@ -79,7 +80,7 @@ public final class RequestValidator {
         JsonValue json;
         try {
             json = Json.parse(body);
-        } catch (JsonException | IllegalStateException | java.util.NoSuchElementException e) {
+        } catch (JsonException | IllegalStateException | NoSuchElementException e) {
             return reject(null, new McpError(McpError.PARSE_ERROR, "Parse error", null, 400));
         }
         if (!(json instanceof JsonObject message)) {

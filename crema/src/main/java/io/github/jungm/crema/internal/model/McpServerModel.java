@@ -9,6 +9,7 @@ import java.util.Optional;
 import java.util.TreeMap;
 import java.util.function.Function;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 import org.mcpjava.server.FeatureType;
 import org.mcpjava.server.ImplementationInfo;
@@ -111,7 +112,7 @@ public final class McpServerModel {
      * All Features and completions.
      */
     public List<Feature> features() {
-        return java.util.stream.Stream.of(tools.values(), resources.values(), templates.values(), prompts.values(),
+        return Stream.of(tools.values(), resources.values(), templates.values(), prompts.values(),
                 completions.values()).flatMap(Collection::stream).map(Feature.class::cast).toList();
     }
 

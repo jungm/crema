@@ -1,6 +1,7 @@
 package io.github.jungm.crema.internal.protocol;
 
 import java.io.ByteArrayInputStream;
+import java.io.StringReader;
 import java.io.StringWriter;
 import java.math.BigDecimal;
 import java.util.ArrayList;
@@ -47,7 +48,7 @@ public final class Json {
     }
 
     public static JsonValue parse(String json) {
-        try (JsonReader reader = PROVIDER.createReader(new java.io.StringReader(json))) {
+        try (JsonReader reader = PROVIDER.createReader(new StringReader(json))) {
             return reader.readValue();
         }
     }

@@ -5,9 +5,10 @@ import java.io.InputStream;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.function.Function;
 import java.util.concurrent.CompletionStage;
+import java.util.function.Function;
 
+import io.github.jungm.crema.internal.protocol.Request;
 import io.github.jungm.crema.internal.security.Caller;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.ws.rs.Consumes;
@@ -133,7 +134,7 @@ public class McpEndpoint {
         }
     }
 
-    private static io.github.jungm.crema.internal.protocol.Request request(McpTransport.Plan plan) {
+    private static Request request(McpTransport.Plan plan) {
         return plan instanceof McpTransport.Stream stream ? stream.request()
                 : ((McpTransport.Respond) plan).request();
     }
