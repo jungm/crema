@@ -298,6 +298,12 @@ class FeatureScannerTest {
         public String invalidPriority() {
             return null;
         }
+
+        @Tool
+        @MetaField(prefix = "com.example/", name = "x", value = "1")
+        @MetaField(prefix = "com.example/", name = "x", value = "2")
+        public void duplicateMetaField() {
+        }
     }
 
     @Test
@@ -336,6 +342,8 @@ class FeatureScannerTest {
         assertProblem(problems, prefix + "invalidBoolean()", "neither 'true' nor 'false'");
         assertProblem(problems, prefix + "invalidJson()", "isn't valid JSON");
         assertProblem(problems, prefix + "invalidPriority()", "between 0.0 and 1.0");
+        assertProblem(problems, prefix + "duplicateMetaField()",
+                "more than one @MetaField has the key 'com.example/x'");
     }
 
     public static class AnyStructuredContent {
