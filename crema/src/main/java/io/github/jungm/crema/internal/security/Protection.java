@@ -9,7 +9,7 @@ import java.util.logging.Logger;
 
 import io.github.jungm.crema.internal.config.ConfigLookup;
 import io.github.jungm.crema.internal.config.ConfigValues;
-import io.github.jungm.crema.internal.config.ServerSettings;
+import io.github.jungm.crema.internal.config.McpServerSettings;
 
 /**
  * The configuration of a protected MCP Server: one whose {@code McpApplication} subclass carries
@@ -50,9 +50,9 @@ public record Protection(String server, String issuer, URI jwksUri, String resou
      * @param problems collects deployment problems
      * @return the protection, or empty if the MCP Server isn't protected or is misconfigured
      */
-    public static Optional<Protection> resolve(Class<?> application, ServerSettings settings, ConfigLookup config,
+    public static Optional<Protection> resolve(Class<?> application, McpServerSettings settings, ConfigLookup config,
             List<String> problems) {
-        String prefix = ServerSettings.keyPrefix(settings.name());
+        String prefix = McpServerSettings.keyPrefix(settings.name());
         Optional<AccessRule> rule = AccessRule.ofApplication(application, problems);
         if (rule.isEmpty() || !rule.get().restricts()) {
             config.get(prefix + ISSUER).ifPresent(issuer -> LOG.warning("MCP Server '" + settings.wireName()

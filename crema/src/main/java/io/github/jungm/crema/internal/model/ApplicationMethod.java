@@ -2,7 +2,6 @@ package io.github.jungm.crema.internal.model;
 
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
-import java.lang.reflect.Parameter;
 import java.lang.reflect.Type;
 import java.lang.reflect.UndeclaredThrowableException;
 import java.util.Arrays;
@@ -14,23 +13,22 @@ import java.util.concurrent.ExecutionException;
 import java.util.stream.Collectors;
 
 /**
- * An application method that implements a Feature or a completion, with its parameters and the MCP Servers it
- * is bound to.
+ * A Feature Method or Completion Method, with its parameters and the MCP Servers it is bound to.
  */
-public final class FeatureMethod {
+public final class ApplicationMethod {
 
     private final Class<?> beanClass;
     private final Method method;
-    private final List<Param> params;
+    private final List<Parameter> parameters;
     private final Set<String> servers;
     private final InstanceSource instances;
 
-    public FeatureMethod(Class<?> beanClass, Method method, List<Param> params, Set<String> servers,
+    public ApplicationMethod(Class<?> beanClass, Method method, List<Parameter> parameters, Set<String> servers,
             InstanceSource instances) {
         this.beanClass = beanClass;
         this.method = method;
         method.trySetAccessible();
-        this.params = List.copyOf(params);
+        this.parameters = List.copyOf(parameters);
         this.servers = Set.copyOf(servers);
         this.instances = instances;
     }
@@ -39,12 +37,13 @@ public final class FeatureMethod {
         return method;
     }
 
-    public List<Param> params() {
-        return params;
+    public List<Parameter> parameters() {
+        return parameters;
     }
 
-    public List<Param.Argument> arguments() {
-        return params.stream().filter(Param.Argument.class::isInstance).map(Param.Argument.class::cast).toList();
+    public List<Parameter.Argument> arguments() {
+        return parameters.stream().filter(Parameter.Argument.class::isInstance).map(Parameter.Argument.class::cast)
+                .toList();
     }
 
     /**
@@ -62,7 +61,7 @@ public final class FeatureMethod {
     }
 
     public boolean acceptsProgress() {
-        return params.contains(Param.Injected.PROGRESS);
+        return parameters.contains(Parameter.Injected.PROGRESS);
     }
 
     /**
@@ -101,8 +100,8 @@ public final class FeatureMethod {
     }
 
     static String describe(Class<?> beanClass, Method method) {
-        return beanClass.getName() + "#" + method.getName() + Arrays.stream(method.getParameters())
-                .map(Parameter::getType).map(Class::getSimpleName).collect(Collectors.joining(", ", "(", ")"));
+        return beanClass.getName() + "#" + method.getName() + Arrays.stream(method.getParameterTypes())
+                .map(Class::getSimpleName).collect(Collectors.joining(", ", "(", ")"));
     }
 
     private static Exception unwrap(Throwable cause) {

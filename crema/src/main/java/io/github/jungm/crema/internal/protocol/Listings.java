@@ -64,7 +64,7 @@ final class Listings {
         call.rejectCursor();
         JsonArrayBuilder array = Json.FACTORY.createArrayBuilder();
         for (F feature : features) {
-            if (call.services().access().permits(call.server(), feature, call.caller())) {
+            if (call.services().access().permits(call.server(), feature.method(), call.caller())) {
                 array.add(definition.apply(feature));
             }
         }

@@ -16,7 +16,7 @@ import org.junit.jupiter.api.Test;
 import io.github.jungm.crema.McpServerInfo;
 import io.github.jungm.crema.internal.config.ConfigLookup;
 import io.github.jungm.crema.internal.config.MapConfig;
-import io.github.jungm.crema.internal.config.ServerSettings;
+import io.github.jungm.crema.internal.config.McpServerSettings;
 import jakarta.annotation.security.DenyAll;
 import jakarta.annotation.security.PermitAll;
 import jakarta.annotation.security.RolesAllowed;
@@ -84,7 +84,7 @@ class ProtectionTest {
     }
 
     private Optional<Protection> resolve(Class<?> app, ConfigLookup config) {
-        ServerSettings settings = ServerSettings.resolve(app.getAnnotation(McpServerInfo.class), config,
+        McpServerSettings settings = McpServerSettings.resolve(app.getAnnotation(McpServerInfo.class), config,
                 Optional::empty);
         return Protection.resolve(app, settings, config, problems);
     }

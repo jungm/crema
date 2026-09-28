@@ -68,7 +68,7 @@ public final class Dispatcher {
         if (target.isEmpty() || !target.get().method().acceptsProgress()) {
             return false;
         }
-        if (!services.access().permits(server, target.get(), caller)) {
+        if (!services.access().permits(server, target.get().method(), caller)) {
             throw services.access().forbidden(server);
         }
         return true;

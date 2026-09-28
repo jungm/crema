@@ -3,7 +3,6 @@ package io.github.jungm.crema.internal.model;
 import java.lang.annotation.Annotation;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
-import java.lang.reflect.Parameter;
 import java.lang.reflect.Type;
 import java.security.Principal;
 import java.time.OffsetDateTime;
@@ -53,18 +52,18 @@ import jakarta.json.JsonObject;
 import jakarta.json.JsonObjectBuilder;
 
 /**
- * Turns annotated methods into {@link Feature}s, collecting a deployment problem for each method that can't
- * become one. Problems name the offending class and method.
+ * Turns annotated methods into {@link Feature}s and {@link Completion}s, collecting a deployment problem for each
+ * method that can't become one. Problems name the offending class and method.
  */
 public final class FeatureScanner {
 
-    private static final List<Class<? extends Annotation>> FEATURE_ANNOTATIONS = List.of(Tool.class,
-            Resource.class, ResourceTemplate.class, Prompt.class, CompletePrompt.class,
-            CompleteResourceTemplate.class);
+    private static final List<Class<? extends Annotation>> ANNOTATIONS = List.of(Tool.class, Resource.class,
+            ResourceTemplate.class, Prompt.class, CompletePrompt.class, CompleteResourceTemplate.class);
 
     private final Mapping mapping;
     private final IconLookup icons;
     private final List<Feature> features = new ArrayList<>();
+    private final List<Completion> completions = new ArrayList<>();
     private final List<String> problems = new ArrayList<>();
 
     public FeatureScanner(Mapping mapping, IconLookup icons) {
@@ -73,22 +72,22 @@ public final class FeatureScanner {
     }
 
     /**
-     * Whether a method carries a Feature or completion annotation.
+     * Whether a method carries a Feature Method or Completion Method annotation.
      */
-    public static boolean isFeatureMethod(Method method) {
-        return FEATURE_ANNOTATIONS.stream().anyMatch(method::isAnnotationPresent);
+    public static boolean isAnnotated(Method method) {
+        return ANNOTATIONS.stream().anyMatch(method::isAnnotationPresent);
     }
 
     /**
-     * Scans one method; does nothing if it carries no Feature or completion annotation.
+     * Scans one method; does nothing if it carries no Feature Method or Completion Method annotation.
      */
     public FeatureScanner scan(Class<?> beanClass, Method method, InstanceSource instances) {
-        List<Class<? extends Annotation>> kinds = FEATURE_ANNOTATIONS.stream().filter(method::isAnnotationPresent)
+        List<Class<? extends Annotation>> kinds = ANNOTATIONS.stream().filter(method::isAnnotationPresent)
                 .toList();
         if (kinds.isEmpty()) {
             return this;
         }
-        String where = "@" + kinds.get(0).getSimpleName() + " method " + FeatureMethod.describe(beanClass, method);
+        String where = "@" + kinds.get(0).getSimpleName() + " method " + ApplicationMethod.describe(beanClass, method);
         List<String> errors = new ArrayList<>();
         if (kinds.size() > 1) {
             errors.add("carries more than one of " + kinds.stream().map(k -> "@" + k.getSimpleName())
@@ -97,12 +96,20 @@ public final class FeatureScanner {
             errors.add("must not be private");
         } else {
             Class<? extends Annotation> kind = kinds.get(0);
-            List<Param> params = params(method, kind, errors);
-            FeatureMethod featureMethod = new FeatureMethod(beanClass, method, params, servers(method), instances);
+            List<Parameter> parameters = parameters(method, kind, errors);
+            ApplicationMethod applicationMethod = new ApplicationMethod(beanClass, method, parameters,
+                    servers(method), instances);
             try {
-                Feature feature = feature(kind, method, featureMethod, errors);
-                if (errors.isEmpty()) {
-                    features.add(feature);
+                if (isCompletion(kind)) {
+                    Completion completion = completion(kind, applicationMethod, errors);
+                    if (errors.isEmpty()) {
+                        completions.add(completion);
+                    }
+                } else {
+                    Feature feature = feature(kind, method, applicationMethod, errors);
+                    if (errors.isEmpty()) {
+                        features.add(feature);
+                    }
                 }
             } catch (RuntimeException e) {
                 errors.add(e.getMessage() != null ? e.getMessage() : e.toString());
@@ -116,32 +123,31 @@ public final class FeatureScanner {
         return List.copyOf(features);
     }
 
+    public List<Completion> completions() {
+        return List.copyOf(completions);
+    }
+
     public List<String> problems() {
         return List.copyOf(problems);
     }
 
-    private Feature feature(Class<? extends Annotation> kind, Method method, FeatureMethod featureMethod,
+    private Feature feature(Class<? extends Annotation> kind, Method method, ApplicationMethod applicationMethod,
             List<String> errors) {
         if (kind == Tool.class) {
-            return tool(method.getAnnotation(Tool.class), method, featureMethod, errors);
+            return tool(method.getAnnotation(Tool.class), method, applicationMethod, errors);
         } else if (kind == Resource.class) {
-            return resource(method.getAnnotation(Resource.class), method, featureMethod, errors);
+            return resource(method.getAnnotation(Resource.class), method, applicationMethod, errors);
         } else if (kind == ResourceTemplate.class) {
-            return resourceTemplate(method.getAnnotation(ResourceTemplate.class), method, featureMethod, errors);
-        } else if (kind == Prompt.class) {
-            return prompt(method.getAnnotation(Prompt.class), method, featureMethod, errors);
-        } else if (kind == CompletePrompt.class) {
-            return completion(FeatureType.PROMPT, method.getAnnotation(CompletePrompt.class).value(), method,
-                    featureMethod, errors);
+            return resourceTemplate(method.getAnnotation(ResourceTemplate.class), method, applicationMethod,
+                    errors);
         }
-        return completion(FeatureType.RESOURCE_TEMPLATE, method.getAnnotation(CompleteResourceTemplate.class).value(),
-                method, featureMethod, errors);
+        return prompt(method.getAnnotation(Prompt.class), method, applicationMethod, errors);
     }
 
-    private Feature.Tool tool(Tool tool, Method method, FeatureMethod featureMethod, List<String> errors) {
+    private Feature.Tool tool(Tool tool, Method method, ApplicationMethod applicationMethod, List<String> errors) {
         String name = name(tool.name(), Tool.ELEMENT_NAME, method);
         JsonObjectBuilder json = describe(Json.object().add("name", name), tool.title(), tool.description());
-        json.add("inputSchema", mapping.schemas().inputSchema(featureMethod.arguments().stream()
+        json.add("inputSchema", mapping.schemas().inputSchema(applicationMethod.arguments().stream()
                 .map(a -> new SchemaProperty(a.name(), a.type(), a.description(), a.required())).toList()));
         if (tool.structuredContent()) {
             Type output = tool.outputSchemaFrom() == Void.class ? valueType(method) : tool.outputSchemaFrom();
@@ -160,12 +166,12 @@ public final class FeatureScanner {
             json.add("annotations", annotations);
         }
         finish(json, method, FeatureType.TOOL, name);
-        return new Feature.Tool(name, json.build(), featureMethod, tool.structuredContent());
+        return new Feature.Tool(name, json.build(), applicationMethod, tool.structuredContent());
     }
 
-    private Feature.Resource resource(Resource resource, Method method, FeatureMethod featureMethod,
+    private Feature.Resource resource(Resource resource, Method method, ApplicationMethod applicationMethod,
             List<String> errors) {
-        if (!featureMethod.arguments().isEmpty()) {
+        if (!applicationMethod.arguments().isEmpty()) {
             errors.add("Resource methods take no Arguments, only McpRequest, Progress and Cancellation parameters");
         }
         String name = name(resource.name(), Resource.ELEMENT_NAME, method);
@@ -186,16 +192,16 @@ public final class FeatureScanner {
             json.add("size", resource.size());
         }
         finish(json, method, FeatureType.RESOURCE, name);
-        return new Feature.Resource(name, resource.uri(), mimeType, json.build(), featureMethod);
+        return new Feature.Resource(name, resource.uri(), mimeType, json.build(), applicationMethod);
     }
 
     private Feature.ResourceTemplate resourceTemplate(ResourceTemplate template, Method method,
-            FeatureMethod featureMethod, List<String> errors) {
+            ApplicationMethod applicationMethod, List<String> errors) {
         String name = name(template.name(), ResourceTemplate.ELEMENT_NAME, method);
         UriTemplate uriTemplate = UriTemplate.parse(template.uriTemplate());
         Set<String> variables = new LinkedHashSet<>(uriTemplate.variables());
         Set<String> arguments = new LinkedHashSet<>();
-        for (Param.Argument argument : featureMethod.arguments()) {
+        for (Parameter.Argument argument : applicationMethod.arguments()) {
             if (argument.type() != String.class) {
                 errors.add("parameter '" + argument.name() + "' must be a String, like every URI template variable");
             }
@@ -217,10 +223,11 @@ public final class FeatureScanner {
             json.add("annotations", annotations);
         }
         finish(json, method, FeatureType.RESOURCE_TEMPLATE, name);
-        return new Feature.ResourceTemplate(name, uriTemplate, mimeType, json.build(), featureMethod);
+        return new Feature.ResourceTemplate(name, uriTemplate, mimeType, json.build(), applicationMethod);
     }
 
-    private Feature.Prompt prompt(Prompt prompt, Method method, FeatureMethod featureMethod, List<String> errors) {
+    private Feature.Prompt prompt(Prompt prompt, Method method, ApplicationMethod applicationMethod,
+            List<String> errors) {
         Type type = valueType(method);
         if (!isOneOf(type, String.class, PromptMessage.class, PromptResponse.class)
                 && !isListOf(type, PromptMessage.class)) {
@@ -229,10 +236,10 @@ public final class FeatureScanner {
         }
         String name = name(prompt.name(), Prompt.ELEMENT_NAME, method);
         JsonObjectBuilder json = describe(Json.object().add("name", name), prompt.title(), prompt.description());
-        List<Param.Argument> arguments = featureMethod.arguments();
+        List<Parameter.Argument> arguments = applicationMethod.arguments();
         if (!arguments.isEmpty()) {
             JsonArrayBuilder array = Json.FACTORY.createArrayBuilder();
-            for (Param.Argument argument : arguments) {
+            for (Parameter.Argument argument : arguments) {
                 JsonObjectBuilder item = Json.object().add("name", argument.name());
                 if (argument.title() != null) {
                     item.add("title", argument.title());
@@ -245,65 +252,76 @@ public final class FeatureScanner {
             json.add("arguments", array);
         }
         finish(json, method, FeatureType.PROMPT, name);
-        return new Feature.Prompt(name, json.build(), featureMethod);
+        return new Feature.Prompt(name, json.build(), applicationMethod);
     }
 
-    private Feature.Completion completion(FeatureType kind, String target, Method method, FeatureMethod featureMethod,
+    private Completion completion(Class<? extends Annotation> kind, ApplicationMethod applicationMethod,
             List<String> errors) {
+        Method method = applicationMethod.method();
         Type type = valueType(method);
         if (!isOneOf(type, String.class, CompletionResult.class) && !isListOf(type, String.class)) {
             errors.add("Completion Methods must return String, List<String> or CompletionResult, not "
                     + type.getTypeName());
         }
-        List<Param.Argument> arguments = featureMethod.arguments();
+        List<Parameter.Argument> arguments = applicationMethod.arguments();
         if (arguments.size() != 1 || arguments.get(0).type() != String.class) {
             errors.add("Completion Methods must have exactly one String Argument, the value to complete, but have "
                     + arguments.stream().map(a -> a.type().getTypeName() + " " + a.name()).toList());
             return null;
         }
-        return new Feature.Completion(kind, target, arguments.get(0).name(), featureMethod);
+        if (kind == CompletePrompt.class) {
+            return new Completion(FeatureType.PROMPT, method.getAnnotation(CompletePrompt.class).value(),
+                    arguments.get(0).name(), applicationMethod);
+        }
+        return new Completion(FeatureType.RESOURCE_TEMPLATE,
+                method.getAnnotation(CompleteResourceTemplate.class).value(), arguments.get(0).name(),
+                applicationMethod);
     }
 
-    private List<Param> params(Method method, Class<? extends Annotation> kind, List<String> errors) {
-        boolean completion = kind == CompletePrompt.class || kind == CompleteResourceTemplate.class;
-        List<Param> params = new ArrayList<>();
+    private static boolean isCompletion(Class<? extends Annotation> kind) {
+        return kind == CompletePrompt.class || kind == CompleteResourceTemplate.class;
+    }
+
+    private List<Parameter> parameters(Method method, Class<? extends Annotation> kind, List<String> errors) {
+        boolean completion = isCompletion(kind);
+        List<Parameter> result = new ArrayList<>();
         Set<String> names = new HashSet<>();
-        Parameter[] parameters = method.getParameters();
+        java.lang.reflect.Parameter[] parameters = method.getParameters();
         Type[] types = method.getGenericParameterTypes();
         for (int i = 0; i < parameters.length; i++) {
-            Parameter parameter = parameters[i];
+            java.lang.reflect.Parameter parameter = parameters[i];
             Class<?> type = parameter.getType();
             if (type == McpRequest.class) {
-                params.add(Param.Injected.MCP_REQUEST);
+                result.add(Parameter.Injected.MCP_REQUEST);
             } else if (type == Progress.class) {
-                params.add(Param.Injected.PROGRESS);
+                result.add(Parameter.Injected.PROGRESS);
             } else if (type == Cancellation.class) {
-                params.add(Param.Injected.CANCELLATION);
+                result.add(Parameter.Injected.CANCELLATION);
             } else if (type == McpCaller.class) {
-                params.add(Param.Injected.CALLER);
+                result.add(Parameter.Injected.CALLER);
             } else if (type == Principal.class) {
-                params.add(Param.Injected.PRINCIPAL);
+                result.add(Parameter.Injected.PRINCIPAL);
             } else if (type == CompletionContext.class) {
                 if (!completion) {
                     errors.add("CompletionContext is only available to Completion Methods");
                 }
-                params.add(Param.Injected.COMPLETION_CONTEXT);
+                result.add(Parameter.Injected.COMPLETION_CONTEXT);
             } else {
-                Param.Argument argument = argument(parameter, types.length == parameters.length ? types[i] : type,
+                Parameter.Argument argument = argument(parameter, types.length == parameters.length ? types[i] : type,
                         kind, i, errors);
                 if (argument != null) {
                     if (!names.add(argument.name())) {
                         errors.add("more than one parameter has the Argument name '" + argument.name() + "'");
                     }
-                    params.add(argument);
+                    result.add(argument);
                 }
             }
         }
-        return params;
+        return result;
     }
 
-    private Param.Argument argument(Parameter parameter, Type type, Class<? extends Annotation> kind, int index,
-            List<String> errors) {
+    private Parameter.Argument argument(java.lang.reflect.Parameter parameter, Type type,
+            Class<? extends Annotation> kind, int index, List<String> errors) {
         String annotatedName = null;
         String title = null;
         String description = null;
@@ -359,7 +377,7 @@ public final class FeatureScanner {
                     + " and required = false, so it needs a defaultValue or a wrapper type");
         }
         required = required && defaultValue == null && !Types.isOptional(type);
-        return new Param.Argument(name, type, required, defaultValue, title, description);
+        return new Parameter.Argument(name, type, required, defaultValue, title, description);
     }
 
     private void finish(JsonObjectBuilder json, Method method, FeatureType type, String name) {

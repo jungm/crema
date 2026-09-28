@@ -13,18 +13,18 @@ import org.mcpjava.server.Icon;
 import org.mcpjava.server.McpServer;
 
 import io.github.jungm.crema.internal.config.CremaSettings;
-import io.github.jungm.crema.internal.config.ServerSettings;
+import io.github.jungm.crema.internal.config.McpServerSettings;
 import io.github.jungm.crema.internal.spi.ImplementationInfoImpl;
 
 /**
  * The MCP Servers of one application, keyed by the {@code McpApplication} subclass that declares each.
  */
-public final class ServerRegistry {
+public final class McpServerRegistry {
 
     private final Map<Class<?>, McpServerModel> servers;
     private final CremaSettings settings;
 
-    private ServerRegistry(Map<Class<?>, McpServerModel> servers, CremaSettings settings) {
+    private McpServerRegistry(Map<Class<?>, McpServerModel> servers, CremaSettings settings) {
         this.servers = servers;
         this.settings = settings;
     }
@@ -34,22 +34,24 @@ public final class ServerRegistry {
      *
      * @param icons the MCP Server's icons, from {@code @Icons} on the subclass
      */
-    public record Declaration(Class<?> application, ServerSettings settings, List<Icon> icons) {
+    public record Declaration(Class<?> application, McpServerSettings settings, List<Icon> icons) {
     }
 
     /**
      * The registry and the deployment problems found while building it. The registry is only usable if there are
      * no problems. Warnings name questionable but valid declarations.
      */
-    public record Result(ServerRegistry registry, List<String> problems, List<String> warnings) {
+    public record Result(McpServerRegistry registry, List<String> problems, List<String> warnings) {
     }
 
     /**
-     * Assigns Features to the MCP Servers they are bound to, and checks what can only be checked per MCP Server:
-     * unique MCP Server names, bindings to declared MCP Servers, unique Feature names and resource URIs, and
-     * completion references. Resource Templates of the same shape in one MCP Server are warnings.
+     * Assigns Features and Completion Methods to the MCP Servers they are bound to, and checks what can only be
+     * checked per MCP Server: unique MCP Server names, bindings to declared MCP Servers, unique Feature names and
+     * resource URIs, and the Prompts and Resource Templates Completion Methods refer to. Resource Templates of the
+     * same shape in one MCP Server are warnings.
      */
-    public static Result build(List<Declaration> declarations, List<Feature> features, CremaSettings settings) {
+    public static Result build(List<Declaration> declarations, List<Feature> features, List<Completion> completions,
+            CremaSettings settings) {
         List<String> problems = new ArrayList<>();
         List<String> warnings = new ArrayList<>();
         Map<String, Declaration> byName = new LinkedHashMap<>();
@@ -64,31 +66,26 @@ public final class ServerRegistry {
         }
         Map<String, List<Feature>> featuresByServer = new HashMap<>();
         for (Feature feature : features) {
-            for (String server : feature.method().servers()) {
-                if (byName.containsKey(server)) {
-                    featuresByServer.computeIfAbsent(server, s -> new ArrayList<>()).add(feature);
-                } else {
-                    problems.add(where(feature) + ": is bound to the MCP Server '" + display(server)
-                            + "', but no McpApplication declares it" + (McpServer.DEFAULT.equals(server)
-                                    ? "; declare one with @ApplicationPath(\"mcp\") public class ... extends "
-                                            + "McpApplication {}"
-                                    : "; declare one with @McpServerInfo(name = \"" + server + "\")"));
-                }
-            }
+            bind(feature, feature.method(), where(feature), byName, featuresByServer, problems);
+        }
+        Map<String, List<Completion>> completionsByServer = new HashMap<>();
+        for (Completion completion : completions) {
+            bind(completion, completion.method(), where(completion), byName, completionsByServer, problems);
         }
         Map<Class<?>, McpServerModel> servers = new LinkedHashMap<>();
         for (Declaration declaration : byName.values()) {
             String name = declaration.settings().name();
             List<Feature> bound = featuresByServer.getOrDefault(name, List.of());
-            checkServer(name, bound, problems);
+            List<Completion> boundCompletions = completionsByServer.getOrDefault(name, List.of());
+            checkServer(name, bound, boundCompletions, problems);
             checkTemplateShapes(name, bound, warnings);
-            ServerSettings s = declaration.settings();
+            McpServerSettings s = declaration.settings();
             servers.put(declaration.application(), new McpServerModel(declaration.application(),
                     ImplementationInfoImpl.of(s.wireName(), s.title(), s.version(), s.description(), s.websiteUrl(),
                             declaration.icons()),
-                    s.instructions(), settings.listTtlMs(), bound));
+                    s.instructions(), settings.listTtlMs(), bound, boundCompletions));
         }
-        return new Result(new ServerRegistry(servers, settings), List.copyOf(problems), List.copyOf(warnings));
+        return new Result(new McpServerRegistry(servers, settings), List.copyOf(problems), List.copyOf(warnings));
     }
 
     /**
@@ -112,7 +109,23 @@ public final class ServerRegistry {
         return settings;
     }
 
-    private static void checkServer(String server, List<Feature> features, List<String> problems) {
+    private static <T> void bind(T item, ApplicationMethod method, String where, Map<String, Declaration> declared,
+            Map<String, List<T>> byServer, List<String> problems) {
+        for (String server : method.servers()) {
+            if (declared.containsKey(server)) {
+                byServer.computeIfAbsent(server, s -> new ArrayList<>()).add(item);
+            } else {
+                problems.add(where + ": is bound to the MCP Server '" + display(server)
+                        + "', but no McpApplication declares it" + (McpServer.DEFAULT.equals(server)
+                                ? "; declare one with @ApplicationPath(\"mcp\") public class ... extends "
+                                        + "McpApplication {}"
+                                : "; declare one with @McpServerInfo(name = \"" + server + "\")"));
+            }
+        }
+    }
+
+    private static void checkServer(String server, List<Feature> features, List<Completion> completions,
+            List<String> problems) {
         String in = " in MCP Server '" + display(server) + "'";
         unique(features, Feature.Tool.class, Feature::name, quoted("Tool name"), in, problems);
         unique(features, Feature.Resource.class, Feature::name, quoted("Resource name"), in, problems);
@@ -120,12 +133,10 @@ public final class ServerRegistry {
         unique(features, Feature.ResourceTemplate.class, Feature::name, quoted("Resource Template name"), in,
                 problems);
         unique(features, Feature.Prompt.class, Feature::name, quoted("Prompt name"), in, problems);
-        unique(features, Feature.Completion.class, Feature::name, key -> "Completion Method for " + key, in,
-                problems);
-        for (Feature feature : features) {
-            if (feature instanceof Feature.Completion completion) {
-                checkCompletion(completion, features, in, problems);
-            }
+        unique(completions, Completion::describe, Completion::method, McpServerRegistry::where,
+                key -> "Completion Method for " + key, in, problems);
+        for (Completion completion : completions) {
+            checkCompletion(completion, features, in, problems);
         }
     }
 
@@ -148,7 +159,7 @@ public final class ServerRegistry {
         }
     }
 
-    private static void checkCompletion(Feature.Completion completion, List<Feature> features, String in,
+    private static void checkCompletion(Completion completion, List<Feature> features, String in,
             List<String> problems) {
         Optional<List<String>> arguments;
         String what;
@@ -156,7 +167,7 @@ public final class ServerRegistry {
             what = "Prompt";
             arguments = features.stream().filter(Feature.Prompt.class::isInstance)
                     .filter(f -> f.name().equals(completion.target())).findFirst()
-                    .map(f -> f.method().arguments().stream().map(Param.Argument::name).toList());
+                    .map(f -> f.method().arguments().stream().map(Parameter.Argument::name).toList());
         } else {
             what = "Resource Template";
             arguments = features.stream().filter(Feature.ResourceTemplate.class::isInstance)
@@ -179,28 +190,29 @@ public final class ServerRegistry {
 
     private static <F extends Feature> void unique(List<Feature> features, Class<F> type, Function<F, String> key,
             Function<String, String> what, String in, List<String> problems) {
-        Map<String, F> seen = new HashMap<>();
-        for (Feature feature : features) {
-            if (type.isInstance(feature)) {
-                F typed = type.cast(feature);
-                F previous = seen.putIfAbsent(key.apply(typed), typed);
-                if (previous != null) {
-                    problems.add(where(feature) + ": duplicate " + what.apply(key.apply(typed)) + in
-                            + ", also used by " + previous.method().describe());
-                }
+        unique(features.stream().filter(type::isInstance).map(type::cast).toList(), key, Feature::method,
+                McpServerRegistry::where, what, in, problems);
+    }
+
+    private static <T> void unique(List<T> items, Function<T, String> key, Function<T, ApplicationMethod> method,
+            Function<T, String> where, Function<String, String> what, String in, List<String> problems) {
+        Map<String, T> seen = new HashMap<>();
+        for (T item : items) {
+            T previous = seen.putIfAbsent(key.apply(item), item);
+            if (previous != null) {
+                problems.add(where.apply(item) + ": duplicate " + what.apply(key.apply(item)) + in
+                        + ", also used by " + method.apply(previous).describe());
             }
         }
     }
 
     private static String where(Feature feature) {
-        return "@" + annotation(feature) + " method " + feature.method().describe();
+        return "@" + feature.getClass().getSimpleName() + " method " + feature.method().describe();
     }
 
-    private static String annotation(Feature feature) {
-        if (feature instanceof Feature.Completion completion) {
-            return completion.kind() == FeatureType.PROMPT ? "CompletePrompt" : "CompleteResourceTemplate";
-        }
-        return feature.getClass().getSimpleName();
+    private static String where(Completion completion) {
+        return "@" + (completion.kind() == FeatureType.PROMPT ? "CompletePrompt" : "CompleteResourceTemplate")
+                + " method " + completion.method().describe();
     }
 
     private static String display(String server) {

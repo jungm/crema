@@ -23,8 +23,7 @@ import com.nimbusds.jose.proc.BadJOSEException;
 import com.nimbusds.jwt.JWTClaimsSet;
 
 import io.github.jungm.crema.internal.json.Json;
-import io.github.jungm.crema.internal.model.Feature;
-import io.github.jungm.crema.internal.model.FeatureMethod;
+import io.github.jungm.crema.internal.model.ApplicationMethod;
 import io.github.jungm.crema.internal.model.McpServerModel;
 import io.github.jungm.crema.internal.protocol.Rejection;
 import jakarta.json.JsonObject;
@@ -55,14 +54,14 @@ public final class CremaAccessPolicy implements Closeable {
 
     private static final Logger LOG = Logger.getLogger(CremaAccessPolicy.class.getName());
 
-    private final Map<Class<?>, ServerAccess> servers = new LinkedHashMap<>();
+    private final Map<Class<?>, McpServerAccess> servers = new LinkedHashMap<>();
 
     /**
      * @param failures lets through one warning per minute about failures to validate tokens that aren't the
      *        token's fault, such as unavailable keys
      */
-    private record ServerAccess(Protection protection, TokenValidator validator,
-            Map<FeatureMethod, AccessRule> rules, boolean isPrivate, LogText.Throttle failures) {
+    private record McpServerAccess(Protection protection, TokenValidator validator,
+            Map<ApplicationMethod, AccessRule> rules, boolean isPrivate, LogText.Throttle failures) {
     }
 
     /**
@@ -91,19 +90,19 @@ public final class CremaAccessPolicy implements Closeable {
         Set<String> problems = new LinkedHashSet<>();
         for (McpServerModel server : servers) {
             Optional<AccessRule> application = AccessRule.ofApplication(server.application(), new ArrayList<>());
-            Map<FeatureMethod, AccessRule> rules = new IdentityHashMap<>();
+            Map<ApplicationMethod, AccessRule> rules = new IdentityHashMap<>();
             List<String> found = new ArrayList<>();
             boolean restricted = false;
-            for (Feature feature : server.features()) {
-                AccessRule rule = AccessRule.of(feature.method().method(), application, found);
-                rules.put(feature.method(), rule);
+            for (ApplicationMethod method : server.applicationMethods()) {
+                AccessRule rule = AccessRule.of(method.method(), application, found);
+                rules.put(method, rule);
                 restricted |= rule.restricts();
             }
             problems.addAll(found);
             Protection protection = protections.get(server.application());
             TokenValidator validator = protection == null ? null : new TokenValidator(protection, tuning);
             policy.servers.put(server.application(),
-                    new ServerAccess(protection, validator, rules, protection != null || restricted,
+                    new McpServerAccess(protection, validator, rules, protection != null || restricted,
                             new LogText.Throttle(1, TimeUnit.MINUTES)));
         }
         return new Result(policy, List.copyOf(problems));
@@ -120,7 +119,7 @@ public final class CremaAccessPolicy implements Closeable {
      * @throws Rejection a {@code 401} challenge
      */
     public Caller authenticate(McpServerModel server, Caller caller, List<String> authorization) {
-        ServerAccess access = access(server);
+        McpServerAccess access = access(server);
         if (access.protection() == null) {
             return caller;
         }
@@ -144,18 +143,18 @@ public final class CremaAccessPolicy implements Closeable {
     }
 
     /**
-     * Whether the caller may use a Feature or Completion Method. Features that aren't permitted are omitted from
-     * lists.
+     * Whether the caller may use a Feature Method or Completion Method. Features whose Feature Method isn't
+     * permitted are omitted from lists.
      *
      * @param caller a caller {@link #authenticate admitted} for this MCP Server
      */
-    public boolean permits(McpServerModel server, Feature feature, Caller caller) {
-        ServerAccess access = access(server);
+    public boolean permits(McpServerModel server, ApplicationMethod method, Caller caller) {
+        McpServerAccess access = access(server);
         if (access.protection() != null
                 && !(caller instanceof TokenCaller tokenCaller && tokenCaller.isFor(server.application()))) {
             return false;
         }
-        return access.rules().get(feature.method()).permits(caller);
+        return access.rules().get(method).permits(caller);
     }
 
     /**
@@ -163,7 +162,7 @@ public final class CremaAccessPolicy implements Closeable {
      * {@code insufficient_scope} challenge on a protected MCP Server.
      */
     public Rejection forbidden(McpServerModel server) {
-        ServerAccess access = access(server);
+        McpServerAccess access = access(server);
         if (access.protection() == null) {
             return new Rejection(403, Map.of(), null);
         }
@@ -189,7 +188,7 @@ public final class CremaAccessPolicy implements Closeable {
      * doesn't depend on the request.
      */
     public Optional<JsonObject> resourceMetadata(McpServerModel server) {
-        ServerAccess access = access(server);
+        McpServerAccess access = access(server);
         if (access.protection() == null) {
             return Optional.empty();
         }
@@ -205,7 +204,7 @@ public final class CremaAccessPolicy implements Closeable {
      */
     @Override
     public void close() {
-        for (ServerAccess access : servers.values()) {
+        for (McpServerAccess access : servers.values()) {
             if (access.validator() != null) {
                 try {
                     access.validator().close();
@@ -217,7 +216,7 @@ public final class CremaAccessPolicy implements Closeable {
         }
     }
 
-    private Optional<Caller> validate(McpServerModel server, ServerAccess access, String token) {
+    private Optional<Caller> validate(McpServerModel server, McpServerAccess access, String token) {
         Protection protection = access.protection();
         if (token.isEmpty()) {
             LOG.fine(() -> "Rejected a request to MCP Server '" + protection.server() + "': empty bearer token");
@@ -263,7 +262,7 @@ public final class CremaAccessPolicy implements Closeable {
      * Logs why a token was rejected for a reason that isn't the token's fault: as a warning without stack trace
      * at most once per minute and MCP Server, since any client can trigger it, and else at {@code FINE}.
      */
-    private static void failure(ServerAccess access, String reason) {
+    private static void failure(McpServerAccess access, String reason) {
         String message = "Rejected a bearer token for MCP Server '" + access.protection().server() + "' because "
                 + reason;
         if (access.failures().permit()) {
@@ -273,8 +272,8 @@ public final class CremaAccessPolicy implements Closeable {
         }
     }
 
-    private ServerAccess access(McpServerModel server) {
-        ServerAccess access = servers.get(server.application());
+    private McpServerAccess access(McpServerModel server) {
+        McpServerAccess access = servers.get(server.application());
         if (access == null) {
             throw new IllegalArgumentException("Unknown MCP Server '" + server.wireName() + "'");
         }

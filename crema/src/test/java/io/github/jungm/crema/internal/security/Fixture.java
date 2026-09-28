@@ -33,7 +33,7 @@ import io.github.jungm.crema.internal.http.HttpRequest;
 import io.github.jungm.crema.internal.http.McpTransport;
 import io.github.jungm.crema.internal.json.Json;
 import io.github.jungm.crema.internal.model.McpServerModel;
-import io.github.jungm.crema.internal.model.ServerRegistry;
+import io.github.jungm.crema.internal.model.McpServerRegistry;
 import io.github.jungm.crema.testkit.FakeAuthorizationServer;
 import jakarta.annotation.security.DenyAll;
 import jakarta.annotation.security.PermitAll;
@@ -216,7 +216,7 @@ final class Fixture {
                 .bean(Features.class, new Features()).bean(AdminFeatures.class, new AdminFeatures())
                 .bean(OtherFeatures.class, new OtherFeatures()).bean(OpenFeatures.class, new OpenFeatures())
                 .bean(PlainFeatures.class, new PlainFeatures());
-        ServerRegistry registry = deployment.registry();
+        McpServerRegistry registry = deployment.registry();
         Map<Class<?>, Protection> protections = new HashMap<>();
         protections.put(ProtectedApp.class, defaultProtection);
         protections.put(OtherApp.class, otherProtection);

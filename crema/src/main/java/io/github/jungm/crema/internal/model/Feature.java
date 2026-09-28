@@ -1,26 +1,23 @@
 package io.github.jungm.crema.internal.model;
 
-
-import org.mcpjava.server.FeatureType;
-
 import jakarta.json.JsonObject;
 
 /**
- * A Feature or a completion, backed by an application method.
+ * A Feature, backed by its Feature Method.
  */
 public sealed interface Feature {
 
     /**
-     * The name under which the Feature is listed; for completions, a description of what they complete.
+     * The name under which the Feature is listed.
      */
     String name();
 
-    FeatureMethod method();
+    ApplicationMethod method();
 
     /**
      * A Tool. {@code definition} is its {@code Tool} object in {@code tools/list}.
      */
-    record Tool(String name, JsonObject definition, FeatureMethod method, boolean structuredContent)
+    record Tool(String name, JsonObject definition, ApplicationMethod method, boolean structuredContent)
             implements Feature {
     }
 
@@ -29,7 +26,7 @@ public sealed interface Feature {
      *
      * @param mimeType the declared MIME type, or {@code null}
      */
-    record Resource(String name, String uri, String mimeType, JsonObject definition, FeatureMethod method)
+    record Resource(String name, String uri, String mimeType, JsonObject definition, ApplicationMethod method)
             implements Feature {
     }
 
@@ -40,28 +37,12 @@ public sealed interface Feature {
      * @param mimeType the declared MIME type, or {@code null}
      */
     record ResourceTemplate(String name, UriTemplate uriTemplate, String mimeType, JsonObject definition,
-            FeatureMethod method) implements Feature {
+            ApplicationMethod method) implements Feature {
     }
 
     /**
      * A Prompt. {@code definition} is its {@code Prompt} object in {@code prompts/list}.
      */
-    record Prompt(String name, JsonObject definition, FeatureMethod method) implements Feature {
-    }
-
-    /**
-     * A Completion Method for one Argument of a Prompt or Resource Template.
-     *
-     * @param kind {@link FeatureType#PROMPT} or {@link FeatureType#RESOURCE_TEMPLATE}
-     * @param target the name of the Prompt or Resource Template
-     * @param argument the name of the completed Argument
-     */
-    record Completion(FeatureType kind, String target, String argument, FeatureMethod method) implements Feature {
-
-        @Override
-        public String name() {
-            return (kind == FeatureType.PROMPT ? "prompt '" : "resource template '") + target + "', argument '"
-                    + argument + "'";
-        }
+    record Prompt(String name, JsonObject definition, ApplicationMethod method) implements Feature {
     }
 }

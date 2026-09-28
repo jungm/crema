@@ -40,7 +40,7 @@ public class CremaExtension implements Extension {
     <T> void discover(@Observes ProcessManagedBean<T> event) {
         Class<?> beanClass = event.getAnnotatedBeanClass().getJavaClass();
         for (AnnotatedMethod<? super T> method : event.getAnnotatedBeanClass().getMethods()) {
-            if (FeatureScanner.isFeatureMethod(method.getJavaMember())) {
+            if (FeatureScanner.isAnnotated(method.getJavaMember())) {
                 found.add(new Found(event.getBean(), beanClass, method.getJavaMember()));
             }
         }
@@ -61,8 +61,8 @@ public class CremaExtension implements Extension {
                 .map(bean -> new ContentEncoders.Candidate(encodedType(bean),
                         new CdiInstanceSource(beanManager, bean)))
                 .toList();
-        CremaDeployment.featuresDiscovered(new CremaDeployment.Catalog(scanner.features(), mapping,
-                new ContentEncoders(() -> candidates), icons),
+        CremaDeployment.featuresDiscovered(new CremaDeployment.Catalog(scanner.features(), scanner.completions(),
+                mapping, new ContentEncoders(() -> candidates), icons),
                 problem -> event.addDeploymentProblem(new DeploymentException(problem)));
         found.clear();
         encoders.clear();

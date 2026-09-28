@@ -5,13 +5,13 @@ import java.lang.reflect.Type;
 /**
  * One parameter of a Feature Method or Completion Method: an Injected Parameter or an Argument.
  */
-public sealed interface Param permits Param.Injected, Param.Argument {
+public sealed interface Parameter permits Parameter.Injected, Parameter.Argument {
 
     /**
      * Parameters that Crema supplies. {@code CALLER} is an {@code io.github.jungm.crema.McpCaller} and
      * {@code PRINCIPAL} a {@code java.security.Principal}.
      */
-    enum Injected implements Param {
+    enum Injected implements Parameter {
         MCP_REQUEST, PROGRESS, CANCELLATION, COMPLETION_CONTEXT, CALLER, PRINCIPAL
     }
 
@@ -23,6 +23,6 @@ public sealed interface Param permits Param.Injected, Param.Argument {
      * @param description the description, or {@code null}
      */
     record Argument(String name, Type type, boolean required, String defaultValue, String title,
-            String description) implements Param {
+            String description) implements Parameter {
     }
 }
