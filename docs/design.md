@@ -14,6 +14,7 @@ Crema is an MCP server implementation for Jakarta EE. It implements the `org.mcp
 
 ## 2. Protocol
 
+- [protocol-notes.md](protocol-notes.md) digests the spec. Its "Design gaps" G1–G3, G5–G11 and G16 are part of this design. G0 is resolved in §7, G4 by §8 (cancellation stays out), G12 by "JSON-RPC errors use HTTP 200 unless the spec names a status", G13 by following what the conformance suite expects, G14 by §7 (no `scope`), and G15 by §7's Resource Identifier rule. The one exception to G16: application code can't raise `-32021`.
 - Implement MCP revision **`2026-07-28` only**, over **Streamable HTTP** only. Read the spec, don't guess: https://modelcontextprotocol.io/specification/2026-07-28 (key pages: `basic/transports/streamable-http`, `basic/versioning`, `server/discover`, `server/tools`, `server/resources`, `server/prompts`, `server/utilities/completion`, `basic/patterns/progress`, `basic/authorization`, `schema`, `changelog`).
 - Stateless: no sessions, no `initialize` handshake, no `Mcp-Session-Id` (ignore it if sent; never mint one). `GET` and `DELETE` on the MCP Endpoint return `405`. `Last-Event-ID` is ignored.
 - Every request carries `_meta` keys `io.modelcontextprotocol/protocolVersion`, `io.modelcontextprotocol/clientCapabilities` and (SHOULD) `io.modelcontextprotocol/clientInfo`. Any version other than `2026-07-28` produces `400` with `UnsupportedProtocolVersionError` listing `["2026-07-28"]`.
@@ -86,13 +87,13 @@ Each of these fails deployment (a CDI `addDeploymentProblem`) with the offending
 
 ## 7. Security
 
-- **Origin**: if `Origin` is present and matches neither the request's own scheme://host[:port] nor an entry in `crema.origin.allowed`, respond `403` (with a JSON-RPC error that has no `id`). An absent `Origin` passes.
+- **Origin** (DNS rebinding): an absent `Origin` passes. A present `Origin` passes only if it is a loopback origin (`http`/`https` with host `localhost`, `127.0.0.1` or `[::1]`, any port) or is listed in `crema.origin.allowed` (`*` disables the check). Otherwise respond `403` with a JSON-RPC error that has no `id`. The request's `Host` header is never trusted for this, because in a rebinding attack `Host` and `Origin` both name the attacker's domain.
 - **Roles**: `@RolesAllowed`, `@PermitAll` and `@DenyAll` are enforced by Crema on Feature and Completion Methods, using `SecurityContext.isUserInRole`. Precedence: method > declaring class > `McpApplication` subclass. `"**"` means any authenticated caller. Features the caller may not use are **omitted** from lists. Invoking one yields `403` (with `WWW-Authenticate: Bearer error="insufficient_scope", resource_metadata="…"` when the MCP Server is protected).
 - **Protected MCP Server**: an MCP Server whose `McpApplication` subclass carries `@RolesAllowed` or `@DenyAll`. Tokens are validated by the Runtime's MicroProfile JWT (`@LoginConfig(authMethod = "MP-JWT")` on the subclass); see [ADR 0001](adr/0001-runtime-mp-jwt-with-per-server-audience.md). Crema:
   - responds `401` with `WWW-Authenticate: Bearer resource_metadata="<MCP Endpoint>/.well-known/oauth-protected-resource"` when there is no authenticated caller;
   - serves the Protected Resource Metadata (RFC 9728) unauthenticated at `<MCP Endpoint>/.well-known/oauth-protected-resource`: `resource` = the Resource Identifier, `authorization_servers` = [`mp.jwt.verify.issuer`], `bearer_methods_supported` = [`header`];
   - requires the Resource Identifier in the token's `aud` (principal is `org.eclipse.microprofile.jwt.JsonWebToken`), else `401` with `error="invalid_token"`;
-  - Resource Identifier = `crema.default-server.resource`/`crema.servers.<name>.resource`, else the single URL in `mp.jwt.verify.audiences` if exactly one, else the MCP Endpoint URL derived from the request;
+  - Resource Identifier = `crema.default-server.resource`/`crema.servers.<name>.resource` (the MCP Endpoint's public URL, for use behind reverse proxies), else the MCP Endpoint URL derived from the request. RFC 9728 §3.3 requires it to equal the URL clients use, so it must never be anything else;
   - fails deployment if `mp.jwt.verify.audiences` is set and doesn't contain a statically configured Resource Identifier;
   - fails deployment if a protected MCP Server exists but MP Config or MP-JWT classes are unavailable.
 - Roles come from MP-JWT's `groups` claim. OAuth scopes aren't mapped, and challenges carry no `scope` parameter.
@@ -104,5 +105,6 @@ Cancellation signalling (the `Cancellation` parameter never fires), `subscriptio
 ## 9. Testing
 
 - `crema`: JUnit 5 unit tests for everything that doesn't need a Runtime (schema generation, binding, conversion, JSON-RPC handling, validation, header validation).
-- `crema-it`: Arquillian deploys test WARs to each Runtime, one Maven profile per Runtime (`tomee`, `openliberty`, `wildfly`, and a non-default `websphere-liberty`), with managed containers that Maven provisions itself. Tests speak MCP over HTTP and cover every method, error path and security case. Where feasible, the official MCP conformance suite runs against a deployed test WAR.
+- `crema-it`: Arquillian deploys test WARs to each Runtime, one Maven profile per Runtime (`tomee`, `openliberty`, `wildfly`, and a non-default `websphere-liberty`), with managed containers that Maven provisions itself. Tests speak MCP over HTTP and cover every method, error path and security case. Tests use a plain `java.net.http.HttpClient` with JSON-P, and validate every result against the 2026-07-28 `schema.json`. The MCP Java SDK doesn't speak 2026-07-28 yet.
+- A conformance fixture WAR (the exact `test_*` fixtures listed in protocol-notes.md) runs against the official suite `@modelcontextprotocol/conformance@0.2.0-alpha.11` (`--requirements 2026-07-28`) on at least one Runtime. A checked-in baseline lists only the scenarios Crema doesn't support by design (MRTR, `-32021`), and the run must exit with 0.
 - First integration test: MP-JWT on an `McpApplication` coexists with a Jakarta Security `@OpenIdAuthenticationMechanismDefinition` elsewhere in the same WAR, on every Runtime.
