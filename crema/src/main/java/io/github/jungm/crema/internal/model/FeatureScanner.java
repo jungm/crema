@@ -5,6 +5,7 @@ import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 import java.lang.reflect.Parameter;
 import java.lang.reflect.Type;
+import java.security.Principal;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
@@ -41,6 +42,7 @@ import org.mcpjava.server.tools.Tool;
 import org.mcpjava.server.tools.ToolArg;
 import org.mcpjava.server.tools.ToolResponse;
 
+import io.github.jungm.crema.McpCaller;
 import io.github.jungm.crema.internal.bind.Types;
 import io.github.jungm.crema.internal.invoke.Mapping;
 import io.github.jungm.crema.internal.json.ProtocolJson;
@@ -296,6 +298,10 @@ public final class FeatureScanner {
                 params.add(Param.Injected.PROGRESS);
             } else if (type == Cancellation.class) {
                 params.add(Param.Injected.CANCELLATION);
+            } else if (type == McpCaller.class) {
+                params.add(Param.Injected.CALLER);
+            } else if (type == Principal.class) {
+                params.add(Param.Injected.PRINCIPAL);
             } else if (type == CompletionContext.class) {
                 if (!completion) {
                     errors.add("CompletionContext is only available to Completion Methods");

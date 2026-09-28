@@ -32,7 +32,7 @@
         <mcp-server-api.version>1.0.0</mcp-server-api.version>
         <jakartaee-web-api.version>10.0.0</jakartaee-web-api.version>
         <microprofile-config-api.version>3.1</microprofile-config-api.version>
-        <microprofile-jwt-auth-api.version>2.1</microprofile-jwt-auth-api.version>
+        <nimbus-jose-jwt.version>10.10</nimbus-jose-jwt.version>
         <junit.version>5.11.4</junit.version>
         <yasson.version>3.0.4</yasson.version>
         <parsson.version>1.1.7</parsson.version>
@@ -56,9 +56,9 @@
                 <version>${microprofile-config-api.version}</version>
             </dependency>
             <dependency>
-                <groupId>org.eclipse.microprofile.jwt</groupId>
-                <artifactId>microprofile-jwt-auth-api</artifactId>
-                <version>${microprofile-jwt-auth-api.version}</version>
+                <groupId>com.nimbusds</groupId>
+                <artifactId>nimbus-jose-jwt</artifactId>
+                <version>${nimbus-jose-jwt.version}</version>
             </dependency>
             <dependency>
                 <groupId>org.junit</groupId>

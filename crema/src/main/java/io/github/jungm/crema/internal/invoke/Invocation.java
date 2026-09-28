@@ -1,5 +1,6 @@
 package io.github.jungm.crema.internal.invoke;
 
+import java.security.Principal;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
@@ -12,6 +13,7 @@ import io.github.jungm.crema.internal.bind.ArgumentBinder;
 import io.github.jungm.crema.internal.bind.BindingException;
 import io.github.jungm.crema.internal.model.FeatureMethod;
 import io.github.jungm.crema.internal.model.Param;
+import io.github.jungm.crema.internal.security.Caller;
 import jakarta.json.JsonObject;
 import jakarta.json.JsonValue;
 
@@ -23,14 +25,26 @@ public final class Invocation {
     private final McpRequest request;
     private final Progress progress;
     private final CompletionContext completionContext;
+    private final Caller caller;
 
     /**
+     * An invocation for an anonymous caller.
+     *
      * @param completionContext the context of a {@code completion/complete} request, or {@code null}
      */
     public Invocation(McpRequest request, Progress progress, CompletionContext completionContext) {
+        this(request, progress, completionContext, Caller.ANONYMOUS);
+    }
+
+    /**
+     * @param completionContext the context of a {@code completion/complete} request, or {@code null}
+     * @param caller the caller the request was admitted for
+     */
+    public Invocation(McpRequest request, Progress progress, CompletionContext completionContext, Caller caller) {
         this.request = request;
         this.progress = progress;
         this.completionContext = completionContext;
+        this.caller = caller;
     }
 
     /**
@@ -61,8 +75,24 @@ public final class Invocation {
                 return progress;
             case CANCELLATION:
                 return NeverCancelled.INSTANCE;
+            case CALLER:
+                return caller.mcpCaller();
+            case PRINCIPAL:
+                return principal();
             default:
                 return completionContext;
+        }
+    }
+
+    /**
+     * The caller's principal, or {@code null} if the caller is anonymous. Some Runtimes throw instead of
+     * answering {@code null}.
+     */
+    private Principal principal() {
+        try {
+            return caller.principal();
+        } catch (RuntimeException e) {
+            return null;
         }
     }
 
