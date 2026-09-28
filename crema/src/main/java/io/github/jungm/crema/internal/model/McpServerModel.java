@@ -14,7 +14,6 @@ import java.util.stream.Stream;
 import org.mcpjava.server.FeatureType;
 import org.mcpjava.server.ImplementationInfo;
 
-import io.github.jungm.crema.internal.config.ServerSettings;
 
 /**
  * One MCP Server: its description and its Features. Listed Features are sorted by name.
@@ -22,8 +21,8 @@ import io.github.jungm.crema.internal.config.ServerSettings;
 public final class McpServerModel {
 
     private final Class<?> application;
-    private final ServerSettings settings;
     private final ImplementationInfo info;
+    private final String instructions;
     private final long listTtlMs;
     private final Map<String, Feature.Tool> tools;
     private final Map<String, Feature.Resource> resources;
@@ -33,13 +32,15 @@ public final class McpServerModel {
     private final Map<String, Feature.Completion> completions;
 
     /**
+     * @param info the {@code serverInfo}, whose name is the MCP Server's name as sent to MCP Clients
+     * @param instructions the instructions sent in {@code server/discover}, or {@code null}
      * @param features the Features and completions bound to this MCP Server; names and URIs must be unique
      */
-    public McpServerModel(Class<?> application, ServerSettings settings, ImplementationInfo info, long listTtlMs,
+    public McpServerModel(Class<?> application, ImplementationInfo info, String instructions, long listTtlMs,
             Collection<? extends Feature> features) {
         this.application = application;
-        this.settings = settings;
         this.info = info;
+        this.instructions = instructions;
         this.listTtlMs = listTtlMs;
         this.tools = index(features, Feature.Tool.class, Feature::name);
         this.resources = index(features, Feature.Resource.class, Feature::name);
@@ -57,15 +58,25 @@ public final class McpServerModel {
         return application;
     }
 
-    public ServerSettings settings() {
-        return settings;
-    }
-
     /**
      * The {@code serverInfo} sent to MCP Clients.
      */
     public ImplementationInfo info() {
         return info;
+    }
+
+    /**
+     * The name sent to MCP Clients: {@code default} for the default MCP Server, else its name.
+     */
+    public String wireName() {
+        return info.name();
+    }
+
+    /**
+     * The instructions for the model, or {@code null} if there are none.
+     */
+    public String instructions() {
+        return instructions;
     }
 
     public long listTtlMs() {

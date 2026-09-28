@@ -83,10 +83,10 @@ public final class ServerRegistry {
             checkServer(name, bound, problems);
             checkTemplateShapes(name, bound, warnings);
             ServerSettings s = declaration.settings();
-            servers.put(declaration.application(), new McpServerModel(declaration.application(), s,
+            servers.put(declaration.application(), new McpServerModel(declaration.application(),
                     ImplementationInfoImpl.of(s.wireName(), s.title(), s.version(), s.description(), s.websiteUrl(),
                             declaration.icons()),
-                    settings.listTtlMs(), bound));
+                    s.instructions(), settings.listTtlMs(), bound));
         }
         return new Result(new ServerRegistry(servers, settings), List.copyOf(problems), List.copyOf(warnings));
     }

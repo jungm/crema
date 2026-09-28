@@ -24,7 +24,7 @@ import jakarta.json.stream.JsonParser;
  * <p>
  * Values whose JSON-B mapping is fixed by the specification (strings, booleans, boxed numbers,
  * {@code BigDecimal}/{@code BigInteger}, JSON-P values) are converted directly; everything else goes through
- * {@link Jsonb}. Thread-safe.
+ * {@link Jsonb}. Thread-safe. The owner closes it when the application stops.
  */
 public final class JsonbBridge implements AutoCloseable {
 
@@ -205,8 +205,18 @@ public final class JsonbBridge implements AutoCloseable {
         }
     }
 
+    /**
+     * Releases the resources of the {@link Jsonb} instance, such as its caches of application classes. The
+     * bridge isn't usable afterwards.
+     *
+     * @throws JsonbException if closing fails
+     */
     @Override
-    public void close() throws Exception {
-        jsonb.close();
+    public void close() {
+        try {
+            jsonb.close();
+        } catch (Exception e) {
+            throw new JsonbException("Closing Jsonb failed", e);
+        }
     }
 }

@@ -250,7 +250,7 @@ public final class CremaAccessPolicy implements AccessPolicy, Closeable {
     private ServerAccess access(McpServerModel server) {
         ServerAccess access = servers.get(server.application());
         if (access == null) {
-            throw new IllegalArgumentException("Unknown MCP Server '" + server.settings().wireName() + "'");
+            throw new IllegalArgumentException("Unknown MCP Server '" + server.wireName() + "'");
         }
         return access;
     }

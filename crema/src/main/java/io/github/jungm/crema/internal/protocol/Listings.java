@@ -26,7 +26,7 @@ final class Listings {
                 .add("supportedVersions", Json.FACTORY.createArrayBuilder().add(Mcp.PROTOCOL_VERSION))
                 .add("capabilities", Json.object().add("tools", empty).add("resources", empty).add("prompts", empty)
                         .add("completions", empty));
-        String instructions = server.settings().instructions();
+        String instructions = server.instructions();
         if (instructions != null) {
             result.add("instructions", instructions);
         }
