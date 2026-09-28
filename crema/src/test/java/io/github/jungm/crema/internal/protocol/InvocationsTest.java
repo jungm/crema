@@ -17,20 +17,13 @@ import org.mcpjava.server.resources.ResourceContents;
 import org.mcpjava.server.resources.ResourceTemplate;
 import org.mcpjava.server.tools.Tool;
 
-import io.github.jungm.crema.internal.config.ConfigLookup;
-import io.github.jungm.crema.internal.config.CremaSettings;
-import io.github.jungm.crema.internal.config.ServerSettings;
-import io.github.jungm.crema.internal.invoke.ContentEncoders;
-import io.github.jungm.crema.internal.invoke.Mapping;
+import io.github.jungm.crema.internal.TestDeployment;
 import io.github.jungm.crema.internal.invoke.ProgressChannel;
-import io.github.jungm.crema.internal.model.FeatureScanner;
-import io.github.jungm.crema.internal.model.IconLookup;
+import io.github.jungm.crema.internal.json.Json;
 import io.github.jungm.crema.internal.model.McpServerModel;
-import io.github.jungm.crema.internal.model.Scanning;
-import io.github.jungm.crema.internal.model.ServerRegistry;
 import io.github.jungm.crema.internal.security.Caller;
-import io.github.jungm.crema.internal.security.CremaAccessPolicy;
 import jakarta.json.JsonObject;
+import jakarta.json.JsonObjectBuilder;
 import jakarta.json.JsonValue;
 
 /**
@@ -85,8 +78,8 @@ class InvocationsTest {
         }
 
         @Resource(uri = "test://empty-async")
-        public java.util.concurrent.CompletionStage<List<ResourceContents>> emptyAsync() {
-            return java.util.concurrent.CompletableFuture.completedFuture(List.of());
+        public CompletionStage<List<ResourceContents>> emptyAsync() {
+            return CompletableFuture.completedFuture(List.of());
         }
 
         @Resource(uri = "test://no-names")
@@ -100,8 +93,10 @@ class InvocationsTest {
         }
     }
 
-    private static final Mapping MAPPING = Mapping.create();
-    private static final McpServerModel SERVER = server(Features.class, new Features());
+    private static final TestDeployment DEPLOYMENT = TestDeployment.create().application(App.class)
+            .bean(Features.class, new Features());
+    private static final McpServerModel SERVER = DEPLOYMENT.server(App.class);
+    private static final Dispatcher DISPATCHER = DEPLOYMENT.dispatcher();
 
     @Test
     void errorsFromToolsBecomeToolErrors() {
@@ -170,28 +165,15 @@ class InvocationsTest {
         assertEquals("application/json", contents.getString("mimeType"));
     }
 
-    static McpServerModel server(Class<?> type, Object instance) {
-        FeatureScanner scanner = Scanning.scan(new FeatureScanner(MAPPING, IconLookup.reflective()), type,
-                instance);
-        assertEquals(List.of(), scanner.problems());
-        ServerRegistry.Result result = ServerRegistry.build(List.of(new ServerRegistry.Declaration(App.class,
-                ServerSettings.resolve(null, ConfigLookup.none(), Optional::empty), List.of())), scanner.features(),
-                CremaSettings.defaults());
-        assertEquals(List.of(), result.problems());
-        return result.registry().server(App.class).orElseThrow();
-    }
-
-    static JsonObject handle(String method, jakarta.json.JsonObjectBuilder params) {
+    static JsonObject handle(String method, JsonObjectBuilder params) {
         return handle(SERVER, method, params);
     }
 
-    static JsonObject handle(McpServerModel server, String method, jakarta.json.JsonObjectBuilder params) {
-        JsonObject meta = Json.object().add("io.modelcontextprotocol/protocolVersion", Dispatcher.PROTOCOL_VERSION)
-                .add("io.modelcontextprotocol/clientCapabilities", Json.object()).build();
+    static JsonObject handle(McpServerModel server, String method, JsonObjectBuilder params) {
+        JsonObject meta = Json.object().add(Mcp.META_PROTOCOL_VERSION, Mcp.PROTOCOL_VERSION)
+                .add(Mcp.META_CLIENT_CAPABILITIES, Json.object()).build();
         Request request = new Request(Json.PROVIDER.createValue(1), method, params.add("_meta", meta).build());
-        Dispatcher dispatcher = new Dispatcher(new Services(MAPPING, ContentEncoders.NONE,
-                CremaAccessPolicy.create(List.of(server), java.util.Map.of()).policy()));
-        return dispatcher.handle(server, request, Caller.ANONYMOUS, ProgressChannel.NONE).message();
+        return DISPATCHER.handle(server, request, Caller.ANONYMOUS, ProgressChannel.NONE).message();
     }
 
     static JsonObject result(JsonObject message) {

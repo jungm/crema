@@ -42,7 +42,7 @@ import io.github.jungm.crema.internal.model.Scanning;
 import io.github.jungm.crema.internal.model.McpServerModel;
 import io.github.jungm.crema.internal.model.ServerRegistry;
 import io.github.jungm.crema.internal.protocol.Dispatcher;
-import io.github.jungm.crema.internal.protocol.Json;
+import io.github.jungm.crema.internal.json.Json;
 import io.github.jungm.crema.internal.protocol.Services;
 import io.github.jungm.crema.testkit.FakeAuthorizationServer;
 import jakarta.annotation.security.DenyAll;
@@ -244,7 +244,7 @@ final class Fixture {
         assertEquals(List.of(), result.problems());
         policy = result.policy();
         transport = new McpTransport(registry.registry(),
-                new Dispatcher(new Services(MAPPING, ContentEncoders.NONE, policy)));
+                new Dispatcher(new Services(MAPPING, new ContentEncoders(List::of), policy)));
         protectedServer = transport.server(ProtectedApp.class).orElseThrow();
         otherServer = transport.server(OtherApp.class).orElseThrow();
         openServer = transport.server(OpenApp.class).orElseThrow();

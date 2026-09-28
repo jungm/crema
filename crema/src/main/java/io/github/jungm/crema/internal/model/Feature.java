@@ -1,6 +1,5 @@
 package io.github.jungm.crema.internal.model;
 
-import java.util.Optional;
 
 import org.mcpjava.server.FeatureType;
 
@@ -64,21 +63,5 @@ public sealed interface Feature {
             return (kind == FeatureType.PROMPT ? "prompt '" : "resource template '") + target + "', argument '"
                     + argument + "'";
         }
-    }
-
-    /**
-     * The {@link FeatureType} of Features; empty for completions.
-     */
-    default Optional<FeatureType> type() {
-        if (this instanceof Tool) {
-            return Optional.of(FeatureType.TOOL);
-        } else if (this instanceof Resource) {
-            return Optional.of(FeatureType.RESOURCE);
-        } else if (this instanceof ResourceTemplate) {
-            return Optional.of(FeatureType.RESOURCE_TEMPLATE);
-        } else if (this instanceof Prompt) {
-            return Optional.of(FeatureType.PROMPT);
-        }
-        return Optional.empty();
     }
 }

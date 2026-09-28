@@ -14,8 +14,10 @@ import org.mcpjava.server.progress.ProgressNotification;
 import org.mcpjava.server.progress.ProgressToken;
 import org.mcpjava.server.progress.ProgressTracker;
 
+import io.github.jungm.crema.internal.json.MetaKeys;
 import io.github.jungm.crema.internal.json.ProtocolJson;
-import io.github.jungm.crema.internal.protocol.Json;
+import io.github.jungm.crema.internal.json.Json;
+import io.github.jungm.crema.internal.protocol.Mcp;
 import jakarta.json.JsonObjectBuilder;
 import jakarta.json.JsonValue;
 
@@ -67,7 +69,7 @@ public final class ProgressImpl implements Progress {
                     "Progress must increase with each notification, but " + progress + " follows " + last));
         }
         last = progress;
-        JsonObjectBuilder params = Json.object().add("progressToken", token.json()).add("progress", progress);
+        JsonObjectBuilder params = Json.object().add(Mcp.PROGRESS_TOKEN, token.json()).add("progress", progress);
         if (total != null) {
             params.add("total", total);
         }
@@ -77,15 +79,14 @@ public final class ProgressImpl implements Progress {
         if (!metadata.isEmpty()) {
             params.add("_meta", ProtocolJson.meta(metadata, encoder));
         }
-        return channel.send(Json.object().add("jsonrpc", "2.0").add("method", "notifications/progress")
+        return channel.send(Json.object().add("jsonrpc", "2.0").add("method", Mcp.NOTIFICATIONS_PROGRESS)
                 .add("params", params).build());
     }
 
-    private ProgressToken requireToken() {
+    private void requireToken() {
         if (token == null) {
             throw new IllegalStateException("The request has no progress token");
         }
-        return token;
     }
 
     private final class NotificationBuilder implements ProgressNotification.Builder {
@@ -97,14 +98,16 @@ public final class ProgressImpl implements Progress {
 
         @Override
         public ProgressNotification.Builder putMetadata(String key, Object value) {
-            metadata.put(Objects.requireNonNull(key, "key"), value);
+            metadata.put(MetaKeys.requireValid(key), value);
             return this;
         }
 
         @Override
         public ProgressNotification.Builder setMetadata(Map<String, Object> metadata) {
+            Map<String, Object> replacement = new LinkedHashMap<>();
+            metadata.forEach((key, value) -> replacement.put(MetaKeys.requireValid(key), value));
             this.metadata.clear();
-            this.metadata.putAll(metadata);
+            this.metadata.putAll(replacement);
             return this;
         }
 

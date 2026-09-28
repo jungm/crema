@@ -16,7 +16,7 @@ import java.util.TreeMap;
 
 import org.junit.jupiter.api.Test;
 
-import io.github.jungm.crema.internal.protocol.Json;
+import io.github.jungm.crema.internal.json.Json;
 import io.github.jungm.crema.internal.protocol.Rejection;
 import io.github.jungm.crema.internal.protocol.Request;
 import jakarta.json.JsonObject;

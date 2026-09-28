@@ -20,7 +20,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.function.Consumer;
 
 /**
  * A minimal MCP {@code 2026-07-28} client over Streamable HTTP: sets the standard headers and the {@code _meta}

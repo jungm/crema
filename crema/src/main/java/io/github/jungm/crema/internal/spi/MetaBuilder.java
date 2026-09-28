@@ -4,9 +4,11 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 
 import org.mcpjava.server.MetaCarrier;
+import io.github.jungm.crema.internal.json.MetaKeys;
 
 /**
- * Base for builders that collect {@code _meta} entries. Keys are validated against the MCP key format.
+ * Base for builders that collect {@code _meta} entries. Keys are checked with {@link MetaKeys}, so malformed keys
+ * and keys with a prefix reserved for MCP are rejected.
  */
 abstract class MetaBuilder<THIS extends MetaCarrier.Builder<THIS>> implements MetaCarrier.Builder<THIS> {
 
@@ -14,14 +16,14 @@ abstract class MetaBuilder<THIS extends MetaCarrier.Builder<THIS>> implements Me
 
     @Override
     public THIS putMetadata(String key, Object value) {
-        metadata.put(Meta.validKey(key), value);
+        metadata.put(MetaKeys.requireValid(key), value);
         return self();
     }
 
     @Override
     public THIS setMetadata(Map<String, Object> metadata) {
         Map<String, Object> replacement = new LinkedHashMap<>();
-        metadata.forEach((key, value) -> replacement.put(Meta.validKey(key), value));
+        metadata.forEach((key, value) -> replacement.put(MetaKeys.requireValid(key), value));
         this.metadata.clear();
         this.metadata.putAll(replacement);
         return self();

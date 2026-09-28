@@ -3,6 +3,7 @@ package io.github.jungm.crema.internal.protocol;
 import java.util.Collection;
 import java.util.function.Function;
 
+import io.github.jungm.crema.internal.json.Json;
 import io.github.jungm.crema.internal.model.Feature;
 import io.github.jungm.crema.internal.model.McpServerModel;
 import jakarta.json.JsonArrayBuilder;
@@ -22,10 +23,10 @@ final class Listings {
         McpServerModel server = call.server();
         JsonObject empty = Json.object().build();
         JsonObjectBuilder result = Json.object()
-                .add("supportedVersions", Json.FACTORY.createArrayBuilder().add(Dispatcher.PROTOCOL_VERSION))
+                .add("supportedVersions", Json.FACTORY.createArrayBuilder().add(Mcp.PROTOCOL_VERSION))
                 .add("capabilities", Json.object().add("tools", empty).add("resources", empty).add("prompts", empty)
                         .add("completions", empty));
-        String instructions = server.settings().instructions();
+        String instructions = server.instructions();
         if (instructions != null) {
             result.add("instructions", instructions);
         }

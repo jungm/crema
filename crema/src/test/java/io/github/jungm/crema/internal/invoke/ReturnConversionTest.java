@@ -28,7 +28,7 @@ import org.mcpjava.server.tools.ToolResponse;
 import io.github.jungm.crema.internal.bind.JsonbBridge;
 import io.github.jungm.crema.internal.json.ProtocolJson;
 import io.github.jungm.crema.internal.model.Scanning;
-import io.github.jungm.crema.internal.protocol.Json;
+import io.github.jungm.crema.internal.json.Json;
 import jakarta.json.JsonValue;
 
 class ReturnConversionTest {

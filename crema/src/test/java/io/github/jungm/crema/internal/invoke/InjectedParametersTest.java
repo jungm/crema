@@ -20,7 +20,7 @@ import org.mcpjava.server.progress.ProgressToken;
 import org.mcpjava.server.progress.ProgressTracker;
 
 import io.github.jungm.crema.internal.bind.JsonbBridge;
-import io.github.jungm.crema.internal.protocol.Json;
+import io.github.jungm.crema.internal.json.Json;
 import jakarta.json.JsonObject;
 
 class InjectedParametersTest {

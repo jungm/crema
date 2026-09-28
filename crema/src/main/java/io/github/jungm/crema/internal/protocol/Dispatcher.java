@@ -8,6 +8,7 @@ import java.util.logging.Logger;
 
 import io.github.jungm.crema.internal.invoke.ProgressChannel;
 import io.github.jungm.crema.internal.invoke.ProgressTokenImpl;
+import io.github.jungm.crema.internal.json.Json;
 import io.github.jungm.crema.internal.json.ProtocolJson;
 import io.github.jungm.crema.internal.model.Feature;
 import io.github.jungm.crema.internal.model.McpServerModel;
@@ -22,22 +23,18 @@ import jakarta.json.JsonValue;
  */
 public final class Dispatcher {
 
-    public static final String PROTOCOL_VERSION = "2026-07-28";
-
-    private static final String SERVER_INFO = "io.modelcontextprotocol/serverInfo";
-
     private static final Logger LOG = Logger.getLogger(Dispatcher.class.getName());
 
     private static final Map<String, Function<Call, JsonObject>> HANDLERS = Map.of(
-            "server/discover", Listings::discover,
-            "tools/list", Listings::tools,
-            "tools/call", Invocations::callTool,
-            "resources/list", Listings::resources,
-            "resources/read", Invocations::readResource,
-            "resources/templates/list", Listings::resourceTemplates,
-            "prompts/list", Listings::prompts,
-            "prompts/get", Invocations::getPrompt,
-            "completion/complete", Invocations::complete);
+            Mcp.SERVER_DISCOVER, Listings::discover,
+            Mcp.TOOLS_LIST, Listings::tools,
+            Mcp.TOOLS_CALL, Invocations::callTool,
+            Mcp.RESOURCES_LIST, Listings::resources,
+            Mcp.RESOURCES_READ, Invocations::readResource,
+            Mcp.RESOURCES_TEMPLATES_LIST, Listings::resourceTemplates,
+            Mcp.PROMPTS_LIST, Listings::prompts,
+            Mcp.PROMPTS_GET, Invocations::getPrompt,
+            Mcp.COMPLETION_COMPLETE, Invocations::complete);
 
     private final Services services;
 
@@ -153,7 +150,7 @@ public final class Dispatcher {
         if (result.get("_meta") instanceof JsonObject existing) {
             existing.forEach(meta::add);
         }
-        meta.add(SERVER_INFO, ProtocolJson.implementation(server.info()));
+        meta.add(Mcp.META_SERVER_INFO, ProtocolJson.implementation(server.info()));
         return Json.FACTORY.createObjectBuilder(result).add("resultType", "complete").add("_meta", meta).build();
     }
 }

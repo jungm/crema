@@ -22,10 +22,10 @@ import com.nimbusds.jose.jwk.source.RateLimitReachedException;
 import com.nimbusds.jose.proc.BadJOSEException;
 import com.nimbusds.jwt.JWTClaimsSet;
 
+import io.github.jungm.crema.internal.json.Json;
 import io.github.jungm.crema.internal.model.Feature;
 import io.github.jungm.crema.internal.model.FeatureMethod;
 import io.github.jungm.crema.internal.model.McpServerModel;
-import io.github.jungm.crema.internal.protocol.Json;
 import io.github.jungm.crema.internal.protocol.Rejection;
 import jakarta.json.JsonObject;
 
@@ -276,7 +276,7 @@ public final class CremaAccessPolicy implements Closeable {
     private ServerAccess access(McpServerModel server) {
         ServerAccess access = servers.get(server.application());
         if (access == null) {
-            throw new IllegalArgumentException("Unknown MCP Server '" + server.settings().wireName() + "'");
+            throw new IllegalArgumentException("Unknown MCP Server '" + server.wireName() + "'");
         }
         return access;
     }

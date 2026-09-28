@@ -3,8 +3,8 @@ package io.github.jungm.crema.internal.http;
 import java.util.HashMap;
 import java.util.Map;
 
+import io.github.jungm.crema.internal.json.Json;
 import io.github.jungm.crema.internal.protocol.Dispatcher;
-import io.github.jungm.crema.internal.protocol.Json;
 import io.github.jungm.crema.internal.protocol.McpError;
 import io.github.jungm.crema.internal.protocol.Rejection;
 

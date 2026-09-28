@@ -10,9 +10,9 @@ import java.util.NoSuchElementException;
 import java.util.Optional;
 import java.util.Set;
 
-import io.github.jungm.crema.internal.invoke.McpRequestImpl;
 import io.github.jungm.crema.internal.protocol.Dispatcher;
-import io.github.jungm.crema.internal.protocol.Json;
+import io.github.jungm.crema.internal.json.Json;
+import io.github.jungm.crema.internal.protocol.Mcp;
 import io.github.jungm.crema.internal.protocol.McpError;
 import io.github.jungm.crema.internal.protocol.Rejection;
 import io.github.jungm.crema.internal.protocol.Request;
@@ -92,11 +92,11 @@ final class RequestValidator {
             if (!(params.get("_meta") instanceof JsonObject meta)) {
                 throw missingMeta("_meta");
             }
-            if (!(meta.get(McpRequestImpl.PROTOCOL_VERSION) instanceof JsonString protocolVersion)) {
-                throw missingMeta("_meta." + McpRequestImpl.PROTOCOL_VERSION);
+            if (!(meta.get(Mcp.META_PROTOCOL_VERSION) instanceof JsonString protocolVersion)) {
+                throw missingMeta("_meta." + Mcp.META_PROTOCOL_VERSION);
             }
-            if (!(meta.get(McpRequestImpl.CLIENT_CAPABILITIES) instanceof JsonObject)) {
-                throw missingMeta("_meta." + McpRequestImpl.CLIENT_CAPABILITIES);
+            if (!(meta.get(Mcp.META_CLIENT_CAPABILITIES) instanceof JsonObject)) {
+                throw missingMeta("_meta." + Mcp.META_CLIENT_CAPABILITIES);
             }
 
             match(PROTOCOL_VERSION_HEADER, protocolVersionHeader, protocolVersion.getString());
@@ -108,10 +108,10 @@ final class RequestValidator {
                 }
             }
 
-            if (!protocolVersion.getString().equals(Dispatcher.PROTOCOL_VERSION)) {
+            if (!protocolVersion.getString().equals(Mcp.PROTOCOL_VERSION)) {
                 throw new McpError(McpError.UNSUPPORTED_PROTOCOL_VERSION, "Unsupported protocol version",
                         Json.object().add("supported", Json.FACTORY.createArrayBuilder()
-                                .add(Dispatcher.PROTOCOL_VERSION)).add("requested", protocolVersion.getString())
+                                .add(Mcp.PROTOCOL_VERSION)).add("requested", protocolVersion.getString())
                                 .build(),
                         400);
             }
@@ -172,7 +172,7 @@ final class RequestValidator {
         }
         if (value == null) {
             throw headerMismatch(method.equals("initialize")
-                    ? "Unsupported: this server speaks MCP " + Dispatcher.PROTOCOL_VERSION + " only (stateless; no "
+                    ? "Unsupported: this server speaks MCP " + Mcp.PROTOCOL_VERSION + " only (stateless; no "
                             + "initialize)"
                     : "Missing required header: " + name);
         }

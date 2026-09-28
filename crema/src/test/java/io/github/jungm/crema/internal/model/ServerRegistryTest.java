@@ -3,11 +3,11 @@ package io.github.jungm.crema.internal.model;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 
 import org.junit.jupiter.api.Test;
+import org.mcpjava.server.FeatureType;
 import org.mcpjava.server.McpServer;
 import org.mcpjava.server.completion.CompleteArg;
 import org.mcpjava.server.completion.CompletePrompt;
@@ -18,17 +18,12 @@ import org.mcpjava.server.resources.ResourceTemplate;
 import org.mcpjava.server.tools.Tool;
 
 import io.github.jungm.crema.McpServerInfo;
-import io.github.jungm.crema.internal.config.ConfigLookup;
-import io.github.jungm.crema.internal.config.CremaSettings;
-import io.github.jungm.crema.internal.config.ServerSettings;
-import io.github.jungm.crema.internal.invoke.Mapping;
+import io.github.jungm.crema.internal.TestDeployment;
 
 /**
  * Deployment validation that needs all Features and MCP Servers.
  */
 class ServerRegistryTest {
-
-    private static final Mapping MAPPING = Mapping.create();
 
     static class DefaultApp {
     }
@@ -97,6 +92,11 @@ class ServerRegistryTest {
             return null;
         }
 
+        @CompleteResourceTemplate("missing")
+        public String unknownTemplate(String id) {
+            return null;
+        }
+
         @Tool
         @McpServer("nowhere")
         public void unbound() {
@@ -117,14 +117,14 @@ class ServerRegistryTest {
 
     @Test
     void validRegistry() {
-        ServerRegistry.Result result = build(List.of(declaration(DefaultApp.class)), A.class);
+        ServerRegistry.Result result = build(List.of(DefaultApp.class), A.class);
         assertEquals(List.of(), result.problems());
         assertEquals(List.of(), result.warnings());
         McpServerModel server = result.registry().server(DefaultApp.class).orElseThrow();
         assertEquals("default", server.info().name());
         assertEquals("0.0.0", server.info().version());
         assertTrue(server.tool("tool").isPresent());
-        assertTrue(server.completion(org.mcpjava.server.FeatureType.PROMPT, "prompt", "topic").isPresent());
+        assertTrue(server.completion(FeatureType.PROMPT, "prompt", "topic").isPresent());
         // lookups also work for subclasses, such as CDI proxies of the McpApplication
         class Proxy extends DefaultApp {
         }
@@ -133,7 +133,7 @@ class ServerRegistryTest {
 
     @Test
     void crossChecks() {
-        List<String> problems = build(List.of(declaration(DefaultApp.class)), A.class, B.class).problems();
+        List<String> problems = build(List.of(DefaultApp.class), A.class, B.class).problems();
         String b = B.class.getName() + "#";
         assertProblem(problems, "@Tool method " + b + "sameName(): duplicate Tool name 'tool' in MCP Server "
                 + "'default', also used by " + A.class.getName() + "#tool()");
@@ -146,14 +146,16 @@ class ServerRegistryTest {
                 + "'subject', but the Prompt 'prompt' only has the Arguments [topic]");
         assertProblem(problems, "@CompleteResourceTemplate method " + b + "unknownVariable(String): completes the "
                 + "Argument 'key', but the Resource Template 'template' only has the Arguments [id]");
+        assertProblem(problems, "@CompleteResourceTemplate method " + b + "unknownTemplate(String): references "
+                + "the Resource Template 'missing', which doesn't exist in MCP Server 'default'");
         assertProblem(problems, "@Tool method " + b + "unbound(): is bound to the MCP Server 'nowhere', but no "
                 + "McpApplication declares it");
-        assertEquals(7, problems.size(), problems.toString());
+        assertEquals(8, problems.size(), problems.toString());
     }
 
     @Test
     void templatesOfTheSameShapeAreWarnings() {
-        ServerRegistry.Result result = build(List.of(declaration(DefaultApp.class)), A.class, C.class);
+        ServerRegistry.Result result = build(List.of(DefaultApp.class), A.class, C.class);
         assertEquals(List.of(), result.problems());
         assertEquals(1, result.warnings().size(), result.warnings().toString());
         String warning = result.warnings().get(0);
@@ -170,25 +172,20 @@ class ServerRegistryTest {
 
     @Test
     void serverNamesAreUnique() {
-        List<String> problems = build(List.of(declaration(AdminApp.class), declaration(OtherAdminApp.class)))
+        List<String> problems = build(List.of(AdminApp.class, OtherAdminApp.class))
                 .problems();
         assertEquals(List.of("McpApplication " + OtherAdminApp.class.getName() + " declares the MCP Server 'admin', "
                 + "which McpApplication " + AdminApp.class.getName() + " declares already; set a different "
                 + "@McpServerInfo(name = ...)"), problems);
     }
 
-    private static ServerRegistry.Declaration declaration(Class<?> application) {
-        return new ServerRegistry.Declaration(application, ServerSettings.resolve(
-                application.getAnnotation(McpServerInfo.class), ConfigLookup.none(), Optional::empty), List.of());
-    }
-
-    private static ServerRegistry.Result build(List<ServerRegistry.Declaration> declarations, Class<?>... beans) {
-        FeatureScanner scanner = new FeatureScanner(MAPPING, IconLookup.reflective());
+    private static ServerRegistry.Result build(List<Class<?>> applications, Class<?>... beans) {
+        TestDeployment deployment = TestDeployment.create();
+        applications.forEach(deployment::application);
         for (Class<?> bean : beans) {
-            Scanning.scan(scanner, bean, null);
+            deployment.bean(bean, null);
         }
-        assertEquals(List.of(), scanner.problems());
-        return ServerRegistry.build(new ArrayList<>(declarations), scanner.features(), CremaSettings.defaults());
+        return deployment.build();
     }
 
     private static void assertProblem(List<String> problems, String text) {

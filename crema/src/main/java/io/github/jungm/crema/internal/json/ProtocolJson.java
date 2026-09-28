@@ -12,12 +12,10 @@ import io.github.jungm.crema.internal.spi.IconImpl;
 import io.github.jungm.crema.internal.spi.ImplementationInfoImpl;
 import jakarta.json.JsonArray;
 import jakarta.json.JsonArrayBuilder;
-import jakarta.json.JsonBuilderFactory;
 import jakarta.json.JsonObject;
 import jakarta.json.JsonObjectBuilder;
 import jakarta.json.JsonString;
 import jakarta.json.JsonValue;
-import jakarta.json.spi.JsonProvider;
 import org.mcpjava.server.Icon;
 import org.mcpjava.server.ImplementationInfo;
 import org.mcpjava.server.completion.CompletionResult;
@@ -49,9 +47,6 @@ public final class ProtocolJson {
     /** The maximum number of values in a completion, per the spec. */
     public static final int MAX_COMPLETION_VALUES = 100;
 
-    private static final JsonProvider JSON = JsonProvider.provider();
-    private static final JsonBuilderFactory FACTORY = JSON.createBuilderFactory(Map.of());
-
     private ProtocolJson() {
     }
 
@@ -60,7 +55,7 @@ public final class ProtocolJson {
      * {@code resource_link}.
      */
     public static JsonObject contentBlock(ContentBlock content, Function<Object, JsonValue> valueEncoder) {
-        JsonObjectBuilder json = FACTORY.createObjectBuilder();
+        JsonObjectBuilder json = Json.FACTORY.createObjectBuilder();
         Optional<Annotations> annotations;
         if (content instanceof TextContent text) {
             json.add("type", "text").add("text", text.text());
@@ -96,9 +91,9 @@ public final class ProtocolJson {
      * {@code lastModified} as an ISO-8601 instant.
      */
     public static JsonObject annotations(Annotations annotations) {
-        JsonObjectBuilder json = FACTORY.createObjectBuilder();
+        JsonObjectBuilder json = Json.FACTORY.createObjectBuilder();
         annotations.audience().ifPresent(audience -> {
-            JsonArrayBuilder roles = FACTORY.createArrayBuilder();
+            JsonArrayBuilder roles = Json.FACTORY.createArrayBuilder();
             audience.forEach(role -> roles.add(role.name().toLowerCase(Locale.ROOT)));
             json.add("audience", roles);
         });
@@ -114,12 +109,12 @@ public final class ProtocolJson {
      * structured content, as the spec recommends for backwards compatibility.
      */
     public static JsonObject toolResult(ToolResponse response, Function<Object, JsonValue> valueEncoder) {
-        JsonArrayBuilder content = FACTORY.createArrayBuilder();
+        JsonArrayBuilder content = Json.FACTORY.createArrayBuilder();
         response.content().forEach(block -> content.add(contentBlock(block, valueEncoder)));
-        JsonObjectBuilder json = FACTORY.createObjectBuilder();
+        JsonObjectBuilder json = Json.FACTORY.createObjectBuilder();
         Optional<JsonValue> structured = response.structuredContent().map(value -> encode(value, valueEncoder));
         if (response.content().isEmpty() && structured.isPresent()) {
-            content.add(FACTORY.createObjectBuilder().add("type", "text").add("text", structured.get().toString()));
+            content.add(Json.FACTORY.createObjectBuilder().add("type", "text").add("text", structured.get().toString()));
         }
         json.add("content", content);
         structured.ifPresent(value -> json.add("structuredContent", value));
@@ -133,7 +128,7 @@ public final class ProtocolJson {
      * is not part of it; see {@link #meta(Map, Function)}.
      */
     public static JsonArray resourceContents(ResourceResponse response, Function<Object, JsonValue> valueEncoder) {
-        JsonArrayBuilder json = FACTORY.createArrayBuilder();
+        JsonArrayBuilder json = Json.FACTORY.createArrayBuilder();
         response.getContents().forEach(contents -> json.add(resourceContents(contents, valueEncoder)));
         return json.build();
     }
@@ -142,7 +137,7 @@ public final class ProtocolJson {
      * Encodes a {@code TextResourceContents} or {@code BlobResourceContents} (Base64 {@code blob}).
      */
     public static JsonObject resourceContents(ResourceContents contents, Function<Object, JsonValue> valueEncoder) {
-        JsonObjectBuilder json = FACTORY.createObjectBuilder().add("uri", contents.uri());
+        JsonObjectBuilder json = Json.FACTORY.createObjectBuilder().add("uri", contents.uri());
         contents.mimeType().ifPresent(mimeType -> json.add("mimeType", mimeType));
         if (contents instanceof TextResourceContents text) {
             json.add("text", text.text());
@@ -160,9 +155,9 @@ public final class ProtocolJson {
      * {@code messages}, and the response's own {@code _meta} when non-empty.
      */
     public static JsonObject promptResult(PromptResponse response, Function<Object, JsonValue> valueEncoder) {
-        JsonObjectBuilder json = FACTORY.createObjectBuilder();
+        JsonObjectBuilder json = Json.FACTORY.createObjectBuilder();
         response.description().ifPresent(description -> json.add("description", description));
-        JsonArrayBuilder messages = FACTORY.createArrayBuilder();
+        JsonArrayBuilder messages = Json.FACTORY.createArrayBuilder();
         response.messages().forEach(message -> messages.add(promptMessage(message, valueEncoder)));
         json.add("messages", messages);
         addMeta(json, response.metadata(), valueEncoder);
@@ -173,7 +168,7 @@ public final class ProtocolJson {
      * Encodes a {@code PromptMessage}: {@code role} (lowercase) and {@code content}.
      */
     public static JsonObject promptMessage(PromptMessage message, Function<Object, JsonValue> valueEncoder) {
-        return FACTORY.createObjectBuilder()
+        return Json.FACTORY.createObjectBuilder()
                 .add("role", message.role().name().toLowerCase(Locale.ROOT))
                 .add("content", contentBlock(message.content(), valueEncoder))
                 .build();
@@ -188,9 +183,9 @@ public final class ProtocolJson {
     public static JsonObject completion(CompletionResult result) {
         List<String> values = result.values();
         boolean truncated = values.size() > MAX_COMPLETION_VALUES;
-        JsonArrayBuilder array = FACTORY.createArrayBuilder();
+        JsonArrayBuilder array = Json.FACTORY.createArrayBuilder();
         (truncated ? values.subList(0, MAX_COMPLETION_VALUES) : values).forEach(array::add);
-        JsonObjectBuilder json = FACTORY.createObjectBuilder().add("values", array);
+        JsonObjectBuilder json = Json.FACTORY.createObjectBuilder().add("values", array);
         result.total().ifPresent(total -> json.add("total", total));
         if (truncated) {
             json.add("hasMore", true);
@@ -205,10 +200,10 @@ public final class ProtocolJson {
      * when present.
      */
     public static JsonObject icon(Icon icon) {
-        JsonObjectBuilder json = FACTORY.createObjectBuilder().add("src", icon.src());
+        JsonObjectBuilder json = Json.FACTORY.createObjectBuilder().add("src", icon.src());
         icon.mimeType().ifPresent(mimeType -> json.add("mimeType", mimeType));
         if (!icon.sizes().isEmpty()) {
-            JsonArrayBuilder sizes = FACTORY.createArrayBuilder();
+            JsonArrayBuilder sizes = Json.FACTORY.createArrayBuilder();
             icon.sizes().forEach(sizes::add);
             json.add("sizes", sizes);
         }
@@ -220,7 +215,7 @@ public final class ProtocolJson {
      * Encodes an array of icons.
      */
     public static JsonArray icons(List<Icon> icons) {
-        JsonArrayBuilder json = FACTORY.createArrayBuilder();
+        JsonArrayBuilder json = Json.FACTORY.createArrayBuilder();
         icons.forEach(icon -> json.add(icon(icon)));
         return json.build();
     }
@@ -231,7 +226,7 @@ public final class ProtocolJson {
      * present.
      */
     public static JsonObject implementation(ImplementationInfo info) {
-        JsonObjectBuilder json = FACTORY.createObjectBuilder().add("name", info.name());
+        JsonObjectBuilder json = Json.FACTORY.createObjectBuilder().add("name", info.name());
         if (info.title() != null && !info.title().isEmpty() && !info.title().equals(info.name())) {
             json.add("title", info.title());
         }
@@ -254,7 +249,7 @@ public final class ProtocolJson {
         if (json == null) {
             return ImplementationInfoImpl.empty();
         }
-        String name = string(json, "name").orElse("");
+        String name = Json.string(json, "name").orElse("");
         List<Icon> icons = new ArrayList<>();
         JsonValue iconArray = json.get("icons");
         if (iconArray instanceof JsonArray array) {
@@ -264,21 +259,21 @@ public final class ProtocolJson {
                 }
             }
         }
-        return ImplementationInfoImpl.of(name, string(json, "title").orElse(null), string(json, "version").orElse(""),
-                string(json, "description").orElse(null), string(json, "websiteUrl").orElse(null), icons);
+        return ImplementationInfoImpl.of(name, Json.string(json, "title").orElse(null), Json.string(json, "version").orElse(""),
+                Json.string(json, "description").orElse(null), Json.string(json, "websiteUrl").orElse(null), icons);
     }
 
     /**
      * Encodes a {@code _meta} object.
      */
     public static JsonObject meta(Map<String, Object> metadata, Function<Object, JsonValue> valueEncoder) {
-        JsonObjectBuilder json = FACTORY.createObjectBuilder();
+        JsonObjectBuilder json = Json.FACTORY.createObjectBuilder();
         metadata.forEach((key, value) -> json.add(key, encode(value, valueEncoder)));
         return json.build();
     }
 
     private static Optional<Icon> parseIcon(JsonObject json) {
-        Optional<String> src = string(json, "src");
+        Optional<String> src = Json.string(json, "src");
         if (src.isEmpty()) {
             return Optional.empty();
         }
@@ -290,7 +285,7 @@ public final class ProtocolJson {
                 }
             });
         }
-        Optional<Icon.Theme> theme = string(json, "theme").flatMap(value -> {
+        Optional<Icon.Theme> theme = Json.string(json, "theme").flatMap(value -> {
             for (Icon.Theme candidate : Icon.Theme.values()) {
                 if (candidate.name().equalsIgnoreCase(value)) {
                     return Optional.of(candidate);
@@ -298,11 +293,7 @@ public final class ProtocolJson {
             }
             return Optional.empty();
         });
-        return Optional.of(new IconImpl(src.get(), string(json, "mimeType"), sizes, theme));
-    }
-
-    private static Optional<String> string(JsonObject json, String key) {
-        return json.get(key) instanceof JsonString string ? Optional.of(string.getString()) : Optional.empty();
+        return Optional.of(new IconImpl(src.get(), Json.string(json, "mimeType"), sizes, theme));
     }
 
     private static void addMeta(JsonObjectBuilder json, Map<String, Object> metadata,

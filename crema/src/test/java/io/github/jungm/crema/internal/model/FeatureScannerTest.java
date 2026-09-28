@@ -9,9 +9,11 @@ import java.net.URL;
 import java.net.URLClassLoader;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 
 import javax.tools.JavaCompiler;
@@ -38,16 +40,14 @@ import org.mcpjava.server.tools.Tool;
 import org.mcpjava.server.tools.ToolArg;
 import org.mcpjava.server.tools.ToolResponse;
 
-import io.github.jungm.crema.internal.invoke.Mapping;
-import io.github.jungm.crema.internal.protocol.Json;
+import io.github.jungm.crema.internal.TestDeployment;
+import io.github.jungm.crema.internal.json.Json;
 import jakarta.json.JsonObject;
 
 /**
  * Deployment validation of single methods, and the definitions of valid Features.
  */
 class FeatureScannerTest {
-
-    private static final Mapping MAPPING = Mapping.create();
 
     public record Weather(double temperature, String conditions) {
     }
@@ -85,7 +85,8 @@ class FeatureScannerTest {
             return "hello";
         }
 
-        @ResourceTemplate(name = "row", uriTemplate = "db:///{table}/{id}")
+        @ResourceTemplate(name = "row", uriTemplate = "db:///{table}/{id}",
+                annotations = @Resource.Annotations(lastModified = "2026-01-01T02:00:00+02:00"))
         public String row(String id, String table) {
             return null;
         }
@@ -107,7 +108,7 @@ class FeatureScannerTest {
     void definitions() {
         FeatureScanner scanner = scan(Valid.class);
         assertEquals(List.of(), scanner.problems());
-        Map<String, JsonObject> byName = new java.util.HashMap<>();
+        Map<String, JsonObject> byName = new HashMap<>();
         scanner.features().forEach(f -> {
             if (f instanceof Feature.Tool t) {
                 byName.put(t.name(), t.definition());
@@ -144,6 +145,7 @@ class FeatureScannerTest {
                  "size":5,"icons":[{"src":"https://example.com/RESOURCE/text.png","mimeType":"image/png"}]}
                 """), byName.get("text"));
         assertEquals("db:///{table}/{id}", byName.get("row").getString("uriTemplate"));
+        assertEquals(Json.parse("{\"lastModified\":\"2026-01-01T00:00:00Z\"}"), byName.get("row").get("annotations"));
         assertEquals(Json.parse("""
                 [{"name":"code","title":"Code","description":"The code","required":true},
                  {"name":"language","required":false}]
@@ -169,11 +171,11 @@ class FeatureScannerTest {
             }
         }
         FeatureScanner scanner = Scanning.scan(scan(Bound.class), Unbound.class, null);
-        Map<String, java.util.Set<String>> servers = new java.util.HashMap<>();
+        Map<String, Set<String>> servers = new HashMap<>();
         scanner.features().forEach(f -> servers.put(f.name(), f.method().servers()));
-        assertEquals(java.util.Set.of("a", "b"), servers.get("both"));
-        assertEquals(java.util.Set.of("a"), servers.get("classOnly"));
-        assertEquals(java.util.Set.of(McpServer.DEFAULT), servers.get("tool"));
+        assertEquals(Set.of("a", "b"), servers.get("both"));
+        assertEquals(Set.of("a"), servers.get("classOnly"));
+        assertEquals(Set.of(McpServer.DEFAULT), servers.get("tool"));
     }
 
     public static class Invalid {
@@ -299,6 +301,16 @@ class FeatureScannerTest {
             return null;
         }
 
+        @Resource(uri = "test://y", annotations = @Resource.Annotations(priority = -0.5))
+        public String negativePriority() {
+            return null;
+        }
+
+        @Resource(uri = "test://y", annotations = @Resource.Annotations(lastModified = "2026-01-01T00:00:00"))
+        public String localLastModified() {
+            return null;
+        }
+
         @Tool
         @MetaField(prefix = "com.example/", name = "x", value = "1")
         @MetaField(prefix = "com.example/", name = "x", value = "2")
@@ -342,6 +354,8 @@ class FeatureScannerTest {
         assertProblem(problems, prefix + "invalidBoolean()", "neither 'true' nor 'false'");
         assertProblem(problems, prefix + "invalidJson()", "isn't valid JSON");
         assertProblem(problems, prefix + "invalidPriority()", "between 0.0 and 1.0");
+        assertProblem(problems, prefix + "negativePriority()", "between 0.0 and 1.0");
+        assertProblem(problems, prefix + "localLastModified()", "isn't an ISO 8601 date-time with offset");
         assertProblem(problems, prefix + "duplicateMetaField()",
                 "more than one @MetaField has the key 'com.example/x'");
     }
@@ -372,24 +386,13 @@ class FeatureScannerTest {
     void structuredContentMayBeAnyJsonValue() {
         FeatureScanner scanner = scan(AnyStructuredContent.class);
         assertEquals(List.of(), scanner.problems());
-        Map<String, JsonObject> schemas = new java.util.HashMap<>();
+        Map<String, JsonObject> schemas = new HashMap<>();
         scanner.features().forEach(f -> schemas.put(f.name(), ((Feature.Tool) f).definition().getJsonObject("outputSchema")));
         assertEquals(Json.parse("{\"type\":\"string\"}"), schemas.get("string"));
         assertEquals("array", schemas.get("list").getString("type"));
         assertEquals("array", schemas.get("numbers").getString("type"));
         assertTrue(schemas.get("optional").containsKey("anyOf") || schemas.get("optional").containsKey("type"),
                 schemas.get("optional")::toString);
-    }
-
-    @Test
-    void reservedPrefixes() {
-        for (String reserved : List.of("io.modelcontextprotocol/", "dev.mcp/", "com.mcp.tools/",
-                "modelcontextprotocol.io/", "tools.mcp.com/", "api.modelcontextprotocol.org/")) {
-            assertTrue(MetaFields.isReserved(reserved), reserved);
-        }
-        for (String free : List.of("com.example.mcp/", "example.com/", "mcp/", "com.example/")) {
-            assertFalse(MetaFields.isReserved(free), free);
-        }
     }
 
     @Test
@@ -415,7 +418,7 @@ class FeatureScannerTest {
     }
 
     private static FeatureScanner scan(Class<?> type) {
-        return Scanning.scan(new FeatureScanner(MAPPING, IconLookup.reflective()), type, null);
+        return Scanning.scan(new FeatureScanner(TestDeployment.MAPPING, IconLookup.reflective()), type, null);
     }
 
     private static void assertProblem(List<String> problems, String method, String text) {

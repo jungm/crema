@@ -14,28 +14,17 @@ import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 
 import org.junit.jupiter.api.Test;
 
 import io.github.jungm.crema.McpServerInfo;
-import io.github.jungm.crema.internal.config.ConfigLookup;
+import io.github.jungm.crema.internal.TestDeployment;
 import io.github.jungm.crema.internal.config.CremaSettings;
-import io.github.jungm.crema.internal.config.ServerSettings;
-import io.github.jungm.crema.internal.invoke.ContentEncoders;
-import io.github.jungm.crema.internal.invoke.Mapping;
-import io.github.jungm.crema.internal.model.FeatureScanner;
-import io.github.jungm.crema.internal.model.IconLookup;
-import io.github.jungm.crema.internal.model.Scanning;
+import io.github.jungm.crema.internal.json.Json;
 import io.github.jungm.crema.internal.model.McpServerModel;
-import io.github.jungm.crema.internal.model.ServerRegistry;
-import io.github.jungm.crema.internal.protocol.Dispatcher;
-import io.github.jungm.crema.internal.protocol.Json;
-import io.github.jungm.crema.internal.protocol.Services;
 import io.github.jungm.crema.internal.security.Caller;
-import io.github.jungm.crema.internal.security.CremaAccessPolicy;
 import jakarta.json.JsonArray;
 import jakarta.json.JsonObject;
 import jakarta.json.JsonValue;
@@ -49,7 +38,6 @@ class McpTransportTest {
     static class TestApp {
     }
 
-    private static final Mapping MAPPING = Mapping.create();
     private static final McpTransport TRANSPORT = transport(CremaSettings.defaults());
     private static final McpServerModel SERVER = TRANSPORT.server(TestApp.class).orElseThrow();
 
@@ -396,7 +384,7 @@ class McpTransportTest {
             assertEquals(-32600, body.getJsonObject("error").getInt("code"));
         }
 
-        McpTransport anyOrigin = transport(new CremaSettings(List.of("*"), 0));
+        McpTransport anyOrigin = transport(new CremaSettings(List.of("*"), 0, CremaSettings.defaults().maxRequestBytes()));
         assertEquals(405, reply(anyOrigin.handle(anyOrigin.server(TestApp.class).orElseThrow(),
                 new HttpRequest("GET", Headers.of(Map.of("Origin", List.of("http://evil.example.com"))), -1,
                         InputStream.nullInputStream()), Caller.ANONYMOUS)).status());
@@ -412,19 +400,11 @@ class McpTransportTest {
     }
 
     static McpTransport transport(CremaSettings settings) {
-        FeatureScanner scanner = new FeatureScanner(MAPPING, IconLookup.reflective());
-        Scanning.scan(scanner, Fixtures.Tools.class, new Fixtures.Tools());
-        Scanning.scan(scanner, Fixtures.Resources.class, new Fixtures.Resources());
-        Scanning.scan(scanner, Fixtures.Prompts.class, new Fixtures.Prompts());
-        assertEquals(List.of(), scanner.problems());
-        ServerRegistry.Result result = ServerRegistry.build(List.of(new ServerRegistry.Declaration(TestApp.class,
-                ServerSettings.resolve(TestApp.class.getAnnotation(McpServerInfo.class), ConfigLookup.none(),
-                        Optional::empty),
-                List.of())), scanner.features(), settings);
-        assertEquals(List.of(), result.problems());
-        CremaAccessPolicy access = CremaAccessPolicy.create(result.registry().servers(), Map.of()).policy();
-        return new McpTransport(result.registry(),
-                new Dispatcher(new Services(MAPPING, ContentEncoders.NONE, access)));
+        return TestDeployment.create().application(TestApp.class).settings(settings)
+                .bean(Fixtures.Tools.class, new Fixtures.Tools())
+                .bean(Fixtures.Resources.class, new Fixtures.Resources())
+                .bean(Fixtures.Prompts.class, new Fixtures.Prompts())
+                .transport();
     }
 
     private static HttpReply reply(McpTransport.Outcome outcome) {

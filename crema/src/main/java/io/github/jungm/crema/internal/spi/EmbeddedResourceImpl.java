@@ -8,6 +8,7 @@ import java.util.Optional;
 import org.mcpjava.server.content.Annotations;
 import org.mcpjava.server.content.EmbeddedResource;
 import org.mcpjava.server.resources.ResourceContents;
+import io.github.jungm.crema.internal.json.MetaKeys;
 
 /**
  * Immutable {@link EmbeddedResource}.
@@ -61,7 +62,7 @@ record EmbeddedResourceImpl(ResourceContents resource, Optional<Annotations> ann
 
         @Override
         public EmbeddedResource.Builder putResourceMeta(String key, Object value) {
-            resourceMeta.put(Meta.validKey(key), value);
+            resourceMeta.put(MetaKeys.requireValid(key), value);
             return this;
         }
 

@@ -14,9 +14,15 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.OptionalDouble;
 import java.util.OptionalInt;
+import java.util.OptionalLong;
+
+import javax.naming.Name;
 
 import org.junit.jupiter.api.Test;
+
+import jakarta.json.JsonObject;
 
 class TypesTest {
 
@@ -80,10 +86,26 @@ class TypesTest {
     }
 
     @Test
+    void platformClasses() {
+        assertTrue(Types.isPlatformClass(String.class));
+        assertTrue(Types.isPlatformClass(JsonObject.class));
+        assertTrue(Types.isPlatformClass(Name.class));
+        assertFalse(Types.isPlatformClass(TypesTest.class));
+    }
+
+    @Test
     void optionals() {
         assertTrue(Types.isOptional(new TypeLiteral<Optional<String>>() { }.type()));
         assertTrue(Types.isOptional(OptionalInt.class));
         assertFalse(Types.isOptional(String.class));
+        assertTrue(Types.isOptional(OptionalLong.class));
+        assertTrue(Types.isOptional(OptionalDouble.class));
+        assertFalse(Types.isOptional(int.class));
+        assertEquals(Optional.empty(), Types.emptyOptional(new TypeLiteral<Optional<String>>() { }.type()));
+        assertEquals(OptionalInt.empty(), Types.emptyOptional(OptionalInt.class));
+        assertEquals(OptionalLong.empty(), Types.emptyOptional(OptionalLong.class));
+        assertEquals(OptionalDouble.empty(), Types.emptyOptional(OptionalDouble.class));
+        assertNull(Types.emptyOptional(String.class));
         assertEquals(String.class, Types.optionalValueType(new TypeLiteral<Optional<String>>() { }.type()));
         assertEquals(Object.class, Types.optionalValueType(Optional.class));
         assertEquals(int.class, Types.optionalValueType(OptionalInt.class));

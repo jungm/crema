@@ -28,15 +28,6 @@ public final class Invocation {
     private final Caller caller;
 
     /**
-     * An invocation for an anonymous caller.
-     *
-     * @param completionContext the context of a {@code completion/complete} request, or {@code null}
-     */
-    public Invocation(McpRequest request, Progress progress, CompletionContext completionContext) {
-        this(request, progress, completionContext, Caller.ANONYMOUS);
-    }
-
-    /**
      * @param completionContext the context of a {@code completion/complete} request, or {@code null}
      * @param caller the caller the request was admitted for
      */

@@ -35,10 +35,6 @@ public final class FeatureMethod {
         this.instances = instances;
     }
 
-    public Class<?> beanClass() {
-        return beanClass;
-    }
-
     public Method method() {
         return method;
     }
