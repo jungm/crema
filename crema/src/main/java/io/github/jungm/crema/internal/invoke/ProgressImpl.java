@@ -20,10 +20,11 @@ import jakarta.json.JsonObjectBuilder;
 import jakarta.json.JsonValue;
 
 /**
- * The {@link Progress} of one request. Notifications go to the request's {@link ProgressChannel}; without a
- * progress token, sending is a no-op that completes immediately. {@code progress} must increase with each
- * notification: a notification that doesn't increase it fails with an {@link IllegalArgumentException} and isn't
- * sent. {@code send()} returns a {@code CompletableFuture<Void>}.
+ * The {@link Progress} of one request. Notifications go to the request's {@link ProgressChannel}. As the API
+ * specifies, {@link #notificationBuilder()} and {@link #trackerBuilder()} throw an {@link IllegalStateException}
+ * when the request has no progress token. {@code progress} must increase with each notification: a notification
+ * that doesn't increase it fails with an {@link IllegalArgumentException} and isn't sent. {@code send()} returns a
+ * {@code CompletableFuture<Void>}.
  */
 public final class ProgressImpl implements Progress {
 
@@ -49,19 +50,18 @@ public final class ProgressImpl implements Progress {
 
     @Override
     public ProgressNotification.Builder notificationBuilder() {
+        requireToken();
         return new NotificationBuilder();
     }
 
     @Override
     public ProgressTracker.Builder trackerBuilder() {
+        requireToken();
         return new TrackerBuilder();
     }
 
     synchronized CompletableFuture<Void> send(BigDecimal progress, BigDecimal total, String message,
             Map<String, Object> metadata) {
-        if (token == null) {
-            return CompletableFuture.completedFuture(null);
-        }
         if (last != null && progress.compareTo(last) <= 0) {
             return CompletableFuture.failedFuture(new IllegalArgumentException(
                     "Progress must increase with each notification, but " + progress + " follows " + last));
@@ -161,7 +161,7 @@ public final class ProgressImpl implements Progress {
 
         @Override
         public ProgressToken token() {
-            return requireToken();
+            return token;
         }
 
         @Override
@@ -253,7 +253,7 @@ public final class ProgressImpl implements Progress {
 
         @Override
         public ProgressToken token() {
-            return requireToken();
+            return token;
         }
 
         @Override
