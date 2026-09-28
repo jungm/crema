@@ -25,76 +25,59 @@ Without a profile the integration tests are skipped. Only one profile runs per b
 | `websphere-liberty` | WebSphere Liberty 26.0.0.4 (`wlp-jakartaee10`, latest on Maven Central) | same as `openliberty`                                       | same as `openliberty`                                           | http 18380, https 18743                 | ~25 s     |
 
 Times are for `mvn clean verify` with the Runtime already in the local Maven repository. Each adapter stops its
-server at the end of the run. Liberty uses `webProfile-10.0`, `mpConfig-3.1`, `mpJwt-2.1` and `localConnector-1.0`.
+server at the end of the run. Liberty uses `webProfile-10.0`, `mpConfig-3.1` and `localConnector-1.0`.
+
+The ports are Maven properties, so builds that run at the same time on one machine can move them apart, for
+example by 2000:
+
+```sh
+mvn -B -pl crema-it -am verify -Ptomee -Dit.tomee.http.port=20080 -Dit.tomee.stop.port=20005
+mvn -B -pl crema-it -am verify -Pwildfly -Dit.wildfly.port.offset=12100 -Dit.wildfly.management.port=22090
+mvn -B -pl crema-it -am verify -Popenliberty -Dit.openliberty.http.port=20280 -Dit.openliberty.https.port=20643
+mvn -B -pl crema-it -am verify -Pwebsphere-liberty -Dit.websphere-liberty.http.port=20380 \
+    -Dit.websphere-liberty.https.port=20743
+```
+
+WildFly's ports all follow `it.wildfly.port.offset` (http is 8080 plus the offset); `it.wildfly.management.port` must
+be 9990 plus the offset. The Liberty adapter also refuses to start while any JVM on the machine runs a Liberty server
+of the same name, so concurrent Liberty builds need distinct `-Dit.liberty.server=<name>` (default `crema-it`).
 
 Each test records its observations as `FINDING` lines on stdout and in `target/findings/<runtime>-<test>.txt`.
 
-## Security coexistence (Runtime MP-JWT, rejected in ADR 0001)
+## Security (protected MCP Servers, ADR 0001)
 
-`SecurityCoexistenceIT` deploys one WAR (built by `CoexistenceWar`) containing:
+`ProtectedMcpServerIT` deploys one WAR (built by `SecurityWar`, with Crema, Nimbus and the MCP server API in
+`WEB-INF/lib`) containing:
 
-- `/mcp`: a JAX-RS application shaped like `McpApplication` (abstract base with a `final getClasses()`), with
-  `@LoginConfig(authMethod = "MP-JWT")` and no role constraints; its resource reports the caller.
-- `/api`: a scanning JAX-RS application with `@LoginConfig(authMethod = "MP-JWT")` and a `@RolesAllowed("user")`
-  resource.
+- `/mcp`: a protected MCP Server (`@RolesAllowed("user")` on its `McpApplication`), with Features for role `user`,
+  role `admin`, `@PermitAll`, and one that reports its `McpCaller` and `Principal`.
+- `/open`: an open MCP Server with an unrestricted Feature and a `@RolesAllowed("admin")` one.
+- `/api`: a scanning JAX-RS application without MP-JWT or role constraints; its resource reports the Runtime's caller.
 - `/ui`: a servlet with `@ServletSecurity(@HttpConstraint(rolesAllowed = "user"))`, protected by
-  `@OpenIdAuthenticationMechanismDefinition` against a fake OpenID Connect provider (discovery + JWKS) that runs in
-  the test JVM. Its `providerURI` comes from MP Config through EL.
-- MP-JWT configured in `META-INF/microprofile-config.properties` (`mp.jwt.verify.publickey` as inline PEM, issuer,
-  two audiences). Tests mint RS256 tokens with JDK crypto.
+  `@OpenIdAuthenticationMechanismDefinition` whose `providerURI` comes from MP Config through EL.
+- `META-INF/microprofile-config.properties`: `crema.default-server.issuer` and the OIDC provider URI, both the fake
+  Authorization Server. `resource` isn't set, so the Resource Identifier is derived from the request URL.
 
-`LoginConfigNextToMechanismIT` deploys the same WAR with `@LoginConfig` on every Runtime and records whether it
-deploys.
-
-Runtime-specific parts of the WAR, all switched by the profiles:
-
-- WildFly: an EE 11 `HttpAuthenticationMechanismHandler` (`PathMechanismHandler`), and the web.xml context parameter
-  `resteasy.role.based.security=true` (present on every Runtime, ignored by the others).
-- Liberty: no `@LoginConfig` on the JAX-RS applications.
-- All: the `/mcp` application class is `@Dependent` (see Liberty in the table).
+The fake Authorization Server runs in the test JVM on a loopback port: OpenID Connect discovery, a JWK set that the
+tests rotate, and an authorization endpoint. Tests mint tokens with Nimbus' signers. The WAR needs nothing
+Runtime-specific, and no Runtime security configuration.
 
 ### Findings
 
-| # | Check | TomEE 10.2.0 | WildFly 41.0.1 | Open Liberty 26.0.0.9 / WebSphere Liberty 26.0.0.4 |
-|---|-------|--------------|----------------|----------------------------------------------------|
-| 1 | WAR with MP-JWT and the OIDC mechanism deploys | Yes. | Deploys, but without an application-supplied `HttpAuthenticationMechanismHandler` (Jakarta Security 4.0) every request fails with 500: SmallRye JWT registers MP-JWT as a Jakarta Security mechanism bean (`JWTHttpAuthenticationMechanism`), so Soteria's default handler finds two mechanisms (WELD-001318). With the handler: yes. | With `@LoginConfig`: no, CWWKS1931E ("both a login-config … and the HttpAuthenticationMechanism"); Liberty turns `@LoginConfig` into a login configuration and allows none next to a mechanism. Without `@LoginConfig`: yes. |
-| 2 | `/mcp` without token | 200 from the resource. `getUserPrincipal()` throws `MPJWTFilter$MissingAuthorizationHeaderException`; uncaught, it turns into a Runtime 401. | 200 from the resource, anonymous. | 200 from the resource, anonymous. |
-| 3 | `/mcp` with valid token | `JsonWebToken` principal, `aud` visible, `groups` mapped to roles. | Same. | **Token ignored**, caller anonymous. With a Jakarta Security mechanism in the module, Liberty runs the mechanism (JASPIC bridge) for every request and never consults the mpJwt trust association interceptor. |
-| 4 | `/mcp` with expired / wrong issuer / wrong signature / unlisted `aud` / malformed token | Runtime 401 before the resource, no `WWW-Authenticate`. | Runtime 401 before the resource, no `WWW-Authenticate`. | 200, anonymous (token ignored, see 3). |
-| 5 | `/api` (`@RolesAllowed("user")`), without token / valid / valid without role / expired | 401 / 200 / 403 / 401 | 403 / 200 / 403 / 401. Needs `resteasy.role.based.security`; RESTEasy answers 403 for anonymous callers. | 403 / **403** / 403 / 403 (token ignored, see 3). |
-| 6 | `/ui` without login | 302 to the provider's authorization endpoint. | Same. | Same. |
-| 7 | Application's scanned `@Provider` applied to `/mcp` | **Yes.** TomEE hands discovered providers to every `Application` in the WAR. | No. | No. |
+TomEE 10.2.0, WildFly 41.0.1, Open Liberty 26.0.0.9 and WebSphere Liberty 26.0.0.4 behave the same in every check:
 
-Further observations:
+| # | Check | Result on every Runtime |
+|---|-------|-------------------------|
+| 1 | WAR with a protected MCP Server and the OIDC mechanism deploys | Yes. |
+| 2 | `/mcp` without token (`POST` and `GET`) | Crema's `401`, `WWW-Authenticate: Bearer resource_metadata="<base>/mcp/.well-known/oauth-protected-resource"`, empty body. |
+| 3 | `/mcp` with an expired, not-yet-valid, wrong-issuer, wrong-audience (the open MCP Server's, the API's), foreign-key, `alg: none`, HS256-with-the-public-key or malformed token | Crema's `401` with `error="invalid_token"` and `resource_metadata`, empty body. No Runtime `401`. |
+| 4 | `/mcp` with a valid token | `200`; `tools/list` holds only the permitted Tools, with `cacheScope: private`; the Feature Method sees `alice` and the token's claims. |
+| 5 | Valid token without the Feature's role | `403`, `WWW-Authenticate: Bearer error="insufficient_scope", resource_metadata="…"`. |
+| 6 | Token signed with a key published after the first request | `200`: Nimbus refreshes the JWK set for the unknown `kid`. |
+| 7 | `GET <base>/mcp/.well-known/oauth-protected-resource` with a foreign `Origin` | `200` JSON with `resource` = `<base>/mcp` (as the client addressed it), `authorization_servers` and `bearer_methods_supported`. `404` for the open MCP Server. |
+| 8 | `/open` anonymous; with a bearer token | Runtime caller, anonymous: the `admin` Tool is hidden and answers `403` without `WWW-Authenticate`. A bearer token doesn't change the caller. |
+| 9 | `/ui` without login | `302` to the Authorization Server's authorization endpoint. |
+| 10 | `/api` without token; with an MCP token | `200` and anonymous in both cases: the Runtime ignores bearer tokens and doesn't see Crema's token callers. |
 
-- Liberty without a Jakarta Security mechanism (observed on Open Liberty with the OIDC classes removed from the WAR):
-  MP-JWT works with or without `@LoginConfig` (`mpJwt ignoreApplicationAuthMethod` defaults to `true`). A valid token
-  on `/mcp` gives a `JsonWebToken`; invalid tokens on `/mcp` leave the caller anonymous (the interceptor logs
-  CWWKS5523E); `/api` answers 403 / 200 / 403 / 403. `mp.jwt.verify.publickey` must be a PEM with header and footer;
-  Liberty rejects the bare Base64 key that TomEE and WildFly accept.
-- Liberty makes JAX-RS `Application` subclasses CDI beans with a normal scope, so a `final` method in the
-  `Application` hierarchy fails with WELD-001480 (unproxyable) on the first request (observed on Open Liberty).
-  `@Dependent` on the subclass avoids the proxy.
-- TomEE: if any `Application` class in the WAR declares methods itself, TomEE skips discovered providers for all
-  JAX-RS applications of the WAR, including MP-JWT's `@RolesAllowed` feature (`/api` then answers 200 to a token
-  without the role). Inherited methods don't count, so `McpApplication` subclasses that declare nothing are fine.
-  The switch is `openejb.jaxrs.providers.auto`.
-
-### Why this rules out Runtime MP-JWT
-
-- **Liberty: MP-JWT and a Jakarta Security mechanism cannot share a WAR.** With `@LoginConfig` deployment fails;
-  without it bearer tokens are ignored. The Liberty source has no switch for either (the check is in
-  `JavaEESecCDIExtension.verifyConfiguration`; the mechanism-first dispatch in
-  `WebAppSecurityCollaboratorImpl.performSecurityChecks`). A protected
-  MCP Server on Liberty needs a WAR without Jakarta Security mechanisms, or a UI login configured in `server.xml`
-  (`openidConnectClient`, untested) instead of `@OpenIdAuthenticationMechanismDefinition`.
-- **WildFly: MP-JWT is itself a Jakarta Security mechanism**, so the "one mechanism per application" limit that ADR
-  0001 avoids by not shipping a Crema mechanism hits the Runtime's MP-JWT instead. It works only with an
-  application-supplied Jakarta Security 4.0 (EE 11) `HttpAuthenticationMechanismHandler`.
-- Tokens that fail validation get a Runtime 401 without `WWW-Authenticate` on TomEE and WildFly, so Crema can't add
-  `resource_metadata` or `error="invalid_token"` there. On Liberty the same requests arrive as anonymous.
-- On TomEE Crema must not call `getUserPrincipal()`/`isUserInRole()` on a request without `Authorization` header, or
-  must catch the `RuntimeException`, to produce its own 401.
-- `McpApplication`'s `final` methods break on Liberty unless the subclass is `@Dependent`; Crema's extension could add
-  the scope, or drop `final`.
-- On TomEE the application's scanned providers apply to MCP traffic, contrary to design §3.
+The application's OIDC mechanism runs on every request, but leaves the unconstrained MCP Endpoints alone, so it
+doesn't interfere with Crema's `401`s on any Runtime.

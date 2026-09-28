@@ -2,6 +2,9 @@ package io.github.jungm.crema.internal.security;
 
 import java.security.Principal;
 import java.util.List;
+import java.util.Map;
+
+import io.github.jungm.crema.McpCaller;
 
 /**
  * Who sends the current request. Some Runtimes throw from {@link #principal()} and {@link #isUserInRole(String)}
@@ -32,9 +35,26 @@ public interface Caller {
     List<String> header(String name);
 
     /**
-     * The principal the Runtime authenticated, or {@code null}.
+     * The authenticated principal, or {@code null}.
      */
     Principal principal();
 
     boolean isUserInRole(String role);
+
+    /**
+     * The URL of the MCP Endpoint as the request addresses it, without a trailing slash, or {@code null} when
+     * unknown.
+     */
+    default String endpointUrl() {
+        return null;
+    }
+
+    /**
+     * The caller as Feature Methods see it, or {@code null} for an anonymous caller. The claims are empty unless
+     * the caller was authenticated by a bearer token.
+     */
+    default McpCaller mcpCaller() {
+        Principal principal = CallerPrincipal.safely(this::principal);
+        return principal == null ? null : new CallerPrincipal(principal.getName(), Map.of());
+    }
 }

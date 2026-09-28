@@ -94,18 +94,18 @@ Each of these fails deployment (a CDI `addDeploymentProblem`) with the offending
   - Configuration, per MCP Server (MP Config, so MP Config is required for protected MCP Servers):
     - `issuer` is required.
     - `jwks-uri` is optional. It is otherwise read from the issuer's metadata at `<issuer>/.well-known/openid-configuration`, falling back to RFC 8414 `/.well-known/oauth-authorization-server`, and the metadata's `issuer` must equal the configured one.
-    - `resource` (see below).
+    - `resource` is required (see below).
     - `roles-claim`: a dotted path, default `groups`. It accepts `realm_access.roles` for Keycloak and `roles` for Entra ID.
     - `principal-claim`: default `sub`.
     - `clock-skew-seconds`: default `60`.
-  - Deployment fails if a protected MCP Server has no `issuer` or MP Config is absent.
-  - Nimbus setup: `JWKSourceBuilder` (with caching, rate limiting and outage tolerance), a `DefaultJWTProcessor` limited to the asymmetric algorithms `RS256/384/512`, `PS256/384/512`, `ES256/384/512` and `EdDSA`, a `typ` of `at+jwt` or `JWT` (or absent), and a `DefaultJWTClaimsVerifier` requiring `iss` = issuer, `aud` ∋ Resource Identifier, and `exp`, and checking `nbf` with the configured skew. No `none`, no HMAC.
+  - Deployment fails if a protected MCP Server has no `issuer` or `resource`, or if MP Config is absent.
+  - Nimbus setup: `JWKSourceBuilder` (with caching, rate limiting and outage tolerance), a `DefaultJWTProcessor` limited to the asymmetric algorithms `RS256/384/512`, and `PS256/384/512`, `ES256/384/512`, a `typ` of `at+jwt` or `JWT` (or absent), and a `DefaultJWTClaimsVerifier` requiring `iss` = issuer, `aud` ∋ Resource Identifier, and `exp`, and checking `nbf` with the configured skew. No `none`, no HMAC.
   - Responses:
     - No `Authorization: Bearer` header: `401` with `WWW-Authenticate: Bearer resource_metadata="<MCP Endpoint>/.well-known/oauth-protected-resource"`.
     - Any validation failure: `401` with `error="invalid_token"` and `resource_metadata`. Details are logged, never returned.
   - On success, the request's JAX-RS `SecurityContext` is replaced for MCP processing only: principal name from `principal-claim`, roles from `roles-claim`, `isSecure` from the request, and auth scheme `Bearer`.
   - Protected Resource Metadata (RFC 9728) is served unauthenticated at `<MCP Endpoint>/.well-known/oauth-protected-resource`: `resource` is the Resource Identifier, `authorization_servers` is [issuer], and `bearer_methods_supported` is [`header`].
-  - Resource Identifier = the `resource` config (the MCP Endpoint's public URL, for use behind reverse proxies), else the MCP Endpoint URL derived from the request. RFC 9728 §3.3 requires it to equal the URL clients use, so it must never be anything else.
+  - Resource Identifier = the `resource` config: the MCP Endpoint's public URL. It is never derived from the request, because the `Host` header is attacker-controlled and would let a token issued for another resource of the same Authorization Server pass the audience check. RFC 9728 §3.3 requires it to equal the URL clients use.
   - Tokens are never forwarded anywhere (no passthrough).
 - **Caller for Feature Methods**: Injected Parameter `io.github.jungm.crema.McpCaller` (public API: `Principal`, plus `Map<String, Object> claims()`, empty for open MCP Servers) and plain `java.security.Principal`. Both are `null` for anonymous callers. The container (EJB `@RolesAllowed`, Jakarta Security `SecurityContext`, CDI `Principal`) does **not** see token callers.
 - OAuth scopes aren't mapped, and challenges carry no `scope` parameter.

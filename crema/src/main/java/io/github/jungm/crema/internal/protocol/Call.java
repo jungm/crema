@@ -64,6 +64,6 @@ record Call(McpServerModel server, Request request, Caller caller, ProgressChann
         return new Invocation(new McpRequestImpl(request.id(), meta),
                 new ProgressImpl(ProgressTokenImpl.of(meta).orElse(null), progress,
                         services.mapping().jsonb()::toJsonValue),
-                completionContext);
+                completionContext, caller);
     }
 }

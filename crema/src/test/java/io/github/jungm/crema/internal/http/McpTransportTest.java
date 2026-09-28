@@ -363,9 +363,11 @@ class McpTransportTest {
 
     @Test
     void screen() {
-        assertEquals(Optional.empty(), TRANSPORT.screen(SERVER, null, Caller.ANONYMOUS));
-        assertEquals(Optional.empty(), TRANSPORT.screen(SERVER, "http://localhost:8080", Caller.ANONYMOUS));
-        HttpReply forbidden = TRANSPORT.screen(SERVER, "http://evil.example.com", Caller.ANONYMOUS).orElseThrow();
+        assertEquals(new McpTransport.Admitted(Caller.ANONYMOUS), TRANSPORT.screen(SERVER, null, Caller.ANONYMOUS));
+        assertEquals(new McpTransport.Admitted(Caller.ANONYMOUS),
+                TRANSPORT.screen(SERVER, "http://localhost:8080", Caller.ANONYMOUS));
+        HttpReply forbidden = ((McpTransport.Reply) TRANSPORT.screen(SERVER, "http://evil.example.com",
+                Caller.ANONYMOUS)).reply();
         assertEquals(403, forbidden.status());
         JsonObject body = (JsonObject) Json.parse(forbidden.body());
         assertFalse(body.containsKey("id"));
@@ -373,17 +375,23 @@ class McpTransportTest {
         assertTrue(body.containsKey("error"));
 
         McpTransport anyOrigin = transport(new CremaSettings(List.of("*"), 0), AccessPolicy.PERMIT_ALL);
-        assertEquals(Optional.empty(), anyOrigin.screen(SERVER, "http://evil.example.com", Caller.ANONYMOUS));
+        assertEquals(new McpTransport.Admitted(Caller.ANONYMOUS),
+                anyOrigin.screen(SERVER, "http://evil.example.com", Caller.ANONYMOUS));
     }
 
     @Test
     void accessPolicyHidesFeaturesAndRejectsCalls() {
         AccessPolicy policy = new AccessPolicy() {
             @Override
-            public Optional<Rejection> authenticate(McpServerModel server, Caller caller) {
+            public Admission authenticate(McpServerModel server, Caller caller) {
                 return caller.header("Authorization").isEmpty()
-                        ? Optional.of(new Rejection(401, Map.of("WWW-Authenticate", "Bearer")))
-                        : Optional.empty();
+                        ? new Rejected(new Rejection(401, Map.of("WWW-Authenticate", "Bearer")))
+                        : new Admitted(caller);
+            }
+
+            @Override
+            public Optional<JsonObject> resourceMetadata(McpServerModel server, Caller caller) {
+                return Optional.empty();
             }
 
             @Override
@@ -404,7 +412,7 @@ class McpTransportTest {
         };
         McpTransport secured = transport(CremaSettings.defaults(), policy);
         McpServerModel server = secured.server(TestApp.class).orElseThrow();
-        assertEquals(401, secured.screen(server, null, Caller.ANONYMOUS).orElseThrow().status());
+        assertEquals(401, ((McpTransport.Reply) secured.screen(server, null, Caller.ANONYMOUS)).reply().status());
         Exchange list = exchange(secured, server, RequestValidatorTest.body(1, "tools/list", "2026-07-28", ""),
                 RequestValidatorTest.headers("2026-07-28", "tools/list", null));
         JsonObject result = list.messages().get(0).getJsonObject("result");

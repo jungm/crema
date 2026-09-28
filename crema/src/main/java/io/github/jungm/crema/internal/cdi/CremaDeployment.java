@@ -1,7 +1,9 @@
 package io.github.jungm.crema.internal.cdi;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.function.Consumer;
 import java.util.logging.Level;
@@ -18,6 +20,8 @@ import io.github.jungm.crema.internal.model.IconLookup;
 import io.github.jungm.crema.internal.model.ServerRegistry;
 import io.github.jungm.crema.internal.protocol.Dispatcher;
 import io.github.jungm.crema.internal.protocol.Services;
+import io.github.jungm.crema.internal.security.CremaAccessPolicy;
+import io.github.jungm.crema.internal.security.Protection;
 import jakarta.servlet.ServletContext;
 import jakarta.servlet.ServletContextEvent;
 import jakarta.servlet.ServletContextListener;
@@ -45,6 +49,7 @@ public final class CremaDeployment {
     private static Applications applications;
     private static ServletContext owner;
     private static volatile McpTransport transport;
+    private static CremaAccessPolicy access;
 
     private CremaDeployment() {
     }
@@ -65,8 +70,14 @@ public final class CremaDeployment {
      * An {@code McpApplication} subclass.
      *
      * @param iconProvider the provider of {@code @Icons} on the subclass, or {@code null}
+     * @param protection the protection of its MCP Server, or {@code null} if it isn't protected
      */
-    public record Application(Class<?> type, ServerSettings settings, Class<? extends IconProvider> iconProvider) {
+    public record Application(Class<?> type, ServerSettings settings, Class<? extends IconProvider> iconProvider,
+            Protection protection) {
+
+        public Application(Class<?> type, ServerSettings settings, Class<? extends IconProvider> iconProvider) {
+            this(type, settings, iconProvider, null);
+        }
     }
 
     /**
@@ -116,10 +127,21 @@ public final class CremaDeployment {
      * Forgets everything, for tests.
      */
     static synchronized void reset() {
+        shutdown();
         catalog = null;
         applications = null;
         owner = null;
+    }
+
+    /**
+     * Stops serving MCP and releases what the MCP Servers hold, such as background key retrieval.
+     */
+    static synchronized void shutdown() {
         transport = null;
+        if (access != null) {
+            access.close();
+            access = null;
+        }
     }
 
     /**
@@ -136,7 +158,8 @@ public final class CremaDeployment {
 
     /**
      * Fails the start of the web application if CDI never delivered its Features. Listeners support injection, so
-     * CDI has started by the time they are initialized.
+     * CDI has started by the time they are initialized. Once the web application stops, it releases what the MCP
+     * Servers hold.
      */
     static final class CdiCheck implements ServletContextListener {
 
@@ -147,6 +170,11 @@ public final class CremaDeployment {
                 LOG.log(Level.SEVERE, problem.get());
                 throw new IllegalStateException(problem.get());
             }
+        }
+
+        @Override
+        public void contextDestroyed(ServletContextEvent event) {
+            shutdown();
         }
     }
 
@@ -169,9 +197,26 @@ public final class CremaDeployment {
                 applications.settings());
         problems.addAll(result.problems());
         result.warnings().forEach(LOG::warning);
-        if (problems.isEmpty()) {
-            transport = new McpTransport(result.registry(), new Dispatcher(catalog.services()));
+        if (!problems.isEmpty()) {
+            return problems;
         }
+        Map<Class<?>, Protection> protections = new HashMap<>();
+        for (Application application : applications.applications()) {
+            if (application.protection() != null) {
+                protections.put(application.type(), application.protection());
+            }
+        }
+        CremaAccessPolicy.Result policy = CremaAccessPolicy.create(result.registry().servers(), protections);
+        problems.addAll(policy.problems());
+        if (!problems.isEmpty()) {
+            policy.policy().close();
+            return problems;
+        }
+        shutdown();
+        access = policy.policy();
+        Services services = catalog.services();
+        transport = new McpTransport(result.registry(),
+                new Dispatcher(new Services(services.mapping(), services.encoders(), access)));
         return problems;
     }
 }

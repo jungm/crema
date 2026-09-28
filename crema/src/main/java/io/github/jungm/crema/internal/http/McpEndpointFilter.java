@@ -7,6 +7,7 @@ import java.util.Optional;
 import java.util.function.Function;
 
 import io.github.jungm.crema.internal.security.Caller;
+import io.github.jungm.crema.internal.security.TokenSecurityContext;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.ws.rs.HttpMethod;
 import jakarta.ws.rs.container.ContainerRequestContext;
@@ -21,10 +22,11 @@ import jakarta.ws.rs.core.Response;
 /**
  * Handles every request to the MCP Endpoint before resource matching: the {@code Origin} check and
  * authentication, {@code 405} for anything but {@code POST}, and reading and validating a {@code POST}. It answers
- * invalid requests itself, writing to the servlet response directly (see {@link JaxRs#write}). A valid
- * {@code POST} is handed to {@link McpEndpoint} as a request property, with {@code Content-Type} set to
- * {@link McpEndpoint#PLANNED}, which only {@code McpEndpoint} consumes. Only {@code McpApplication}s register this
- * filter.
+ * rejected and invalid requests itself, writing to the servlet response directly (see {@link JaxRs#write}). A
+ * request admitted for a bearer token caller gets a {@link TokenSecurityContext} for the rest of its JAX-RS
+ * processing. A valid {@code POST} is handed to {@link McpEndpoint} as a request property, with
+ * {@code Content-Type} set to {@link McpEndpoint#PLANNED}, which only {@code McpEndpoint} consumes. Only
+ * {@code McpApplication}s register this filter.
  */
 @PreMatching
 public class McpEndpointFilter implements ContainerRequestFilter {
@@ -48,13 +50,14 @@ public class McpEndpointFilter implements ContainerRequestFilter {
         }
         McpTransport transport = target.get().transport();
         Function<String, List<String>> headers = JaxRs.headers(request.getHeaders());
-        Caller caller = JaxRs.caller(request.getSecurityContext(), headers);
-        Optional<HttpReply> rejected = transport.screen(target.get().server(), JaxRs.first(headers, "Origin"),
-                caller);
-        if (rejected.isPresent()) {
-            abort(request, rejected.get());
+        McpTransport.Screening screening = transport.screen(target.get().server(), JaxRs.first(headers, "Origin"),
+                JaxRs.caller(request.getSecurityContext(), headers, request.getUriInfo()));
+        if (screening instanceof McpTransport.Reply rejected) {
+            abort(request, rejected.reply());
             return;
         }
+        Caller caller = ((McpTransport.Admitted) screening).caller();
+        TokenSecurityContext.replacing(request.getSecurityContext(), caller).ifPresent(request::setSecurityContext);
         if (!HttpMethod.POST.equals(request.getMethod())) {
             abort(request, new HttpReply(405, Map.of(HttpHeaders.ALLOW, HttpMethod.POST), null));
             return;

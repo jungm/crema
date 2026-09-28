@@ -1,0 +1,335 @@
+package io.github.jungm.crema.internal.security;
+
+import static io.github.jungm.crema.internal.security.Fixture.ENDPOINT;
+import static io.github.jungm.crema.internal.security.Fixture.OTHER_ENDPOINT;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+import java.time.Instant;
+import java.util.Date;
+import java.util.List;
+import java.util.Map;
+
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.Test;
+
+import com.nimbusds.jose.JOSEException;
+import com.nimbusds.jose.JOSEObjectType;
+import com.nimbusds.jose.JWSAlgorithm;
+import com.nimbusds.jose.JWSHeader;
+import com.nimbusds.jose.crypto.MACSigner;
+import com.nimbusds.jose.jwk.RSAKey;
+import com.nimbusds.jwt.JWTClaimsSet;
+import com.nimbusds.jwt.PlainJWT;
+
+import io.github.jungm.crema.internal.security.Fixture.Exchange;
+import io.github.jungm.crema.internal.security.Fixture.RequestCaller;
+
+/**
+ * Bearer token validation on a protected MCP Server, against a fake Authorization Server.
+ */
+class BearerTokenTest {
+
+    private static final String METADATA = ENDPOINT + "/.well-known/oauth-protected-resource";
+    private static final String CHALLENGE = "Bearer resource_metadata=\"" + METADATA + "\"";
+    private static final String INVALID_TOKEN = "Bearer error=\"invalid_token\", resource_metadata=\"" + METADATA
+            + "\"";
+
+    private final FakeAuthorizationServer as = new FakeAuthorizationServer();
+    private Fixture fixture;
+
+    @AfterEach
+    void close() {
+        if (fixture != null) {
+            fixture.policy.close();
+        }
+        as.close();
+    }
+
+    private Fixture fixture(boolean discover) {
+        fixture = new Fixture(Fixture.protection(as, "default", null, "groups", discover),
+                Fixture.protection(as, "other", OTHER_ENDPOINT, "groups", discover));
+        return fixture;
+    }
+
+    private Exchange whoami(String authorization) {
+        return fixture.callTool(fixture.protectedServer, RequestCaller.withAuthorization(ENDPOINT, authorization),
+                "whoami");
+    }
+
+    private Exchange whoamiWithToken(String token) {
+        return whoami("Bearer " + token);
+    }
+
+    private void assertInvalid(String token) {
+        Exchange exchange = whoamiWithToken(token);
+        assertEquals(401, exchange.status());
+        assertEquals(INVALID_TOKEN, exchange.challenge());
+        assertNull(exchange.message());
+    }
+
+    @Test
+    void validTokenAdmitsTheCallerNamedBySub() {
+        fixture(false);
+        Exchange exchange = whoamiWithToken(as.token(ENDPOINT));
+        assertEquals(200, exchange.status(), String.valueOf(exchange.message()));
+        assertEquals("alice alice@example.com true", exchange.text());
+    }
+
+    @Test
+    void missingAuthorizationGetsAChallenge() {
+        fixture(false);
+        Exchange exchange = fixture.callTool(fixture.protectedServer, RequestCaller.anonymous(ENDPOINT), "everyone");
+        assertEquals(401, exchange.status());
+        assertEquals(CHALLENGE, exchange.challenge());
+        assertNull(exchange.message());
+    }
+
+    @Test
+    void everyMethodNeedsAToken() {
+        fixture(false);
+        for (String method : List.of("server/discover", "tools/list", "prompts/list")) {
+            assertEquals(401, fixture.call(fixture.protectedServer, RequestCaller.anonymous(ENDPOINT), method, "",
+                    null).status(), method);
+        }
+    }
+
+    @Test
+    void otherSchemesGetAChallenge() {
+        fixture(false);
+        Exchange exchange = whoami("Basic YWxpY2U6c2VjcmV0");
+        assertEquals(401, exchange.status());
+        assertEquals(CHALLENGE, exchange.challenge());
+    }
+
+    @Test
+    void bearerSchemeIsCaseInsensitive() {
+        fixture(false);
+        String token = as.token(ENDPOINT);
+        assertEquals(200, whoami("bearer " + token).status());
+        assertEquals(200, whoami("BEARER " + token).status());
+        assertEquals(200, whoami("  Bearer   " + token + " ").status());
+    }
+
+    @Test
+    void emptyOrRepeatedAuthorizationIsInvalid() {
+        fixture(false);
+        assertEquals(INVALID_TOKEN, whoami("Bearer").challenge());
+        assertEquals(INVALID_TOKEN, whoami("Bearer   ").challenge());
+        Exchange twice = fixture.callTool(fixture.protectedServer,
+                RequestCaller.withAuthorization(ENDPOINT, "Bearer " + as.token(ENDPOINT), "Bearer x"), "whoami");
+        assertEquals(401, twice.status());
+        assertEquals(INVALID_TOKEN, twice.challenge());
+    }
+
+    @Test
+    void malformedTokenIsInvalid() {
+        fixture(false);
+        assertInvalid("not-a-jwt");
+        assertInvalid("a.b.c");
+        assertInvalid(as.token(ENDPOINT) + "x");
+    }
+
+    @Test
+    void expiredTokenIsInvalid() {
+        fixture(false);
+        assertInvalid(as.token(ENDPOINT, c -> c.expirationTime(Date.from(Instant.now().minusSeconds(120)))));
+    }
+
+    @Test
+    void expiryWithinTheClockSkewIsTolerated() {
+        fixture(false);
+        assertEquals(200, whoamiWithToken(as.token(ENDPOINT,
+                c -> c.expirationTime(Date.from(Instant.now().minusSeconds(30))))).status());
+    }
+
+    @Test
+    void tokenWithoutExpiryIsInvalid() {
+        fixture(false);
+        assertInvalid(as.token(ENDPOINT, c -> c.expirationTime(null)));
+    }
+
+    @Test
+    void notBeforeInTheFutureIsInvalid() {
+        fixture(false);
+        assertInvalid(as.token(ENDPOINT, c -> c.notBeforeTime(Date.from(Instant.now().plusSeconds(120)))));
+        assertEquals(200, whoamiWithToken(as.token(ENDPOINT,
+                c -> c.notBeforeTime(Date.from(Instant.now().plusSeconds(30))))).status());
+    }
+
+    @Test
+    void wrongIssuerIsInvalid() {
+        fixture(false);
+        assertInvalid(as.token(ENDPOINT, c -> c.issuer("https://evil.example.com/realm")));
+        assertInvalid(as.token(ENDPOINT, c -> c.issuer(as.issuer() + "/")));
+        assertInvalid(as.token(ENDPOINT, c -> c.issuer(null)));
+    }
+
+    @Test
+    void wrongAudienceIsInvalid() {
+        fixture(false);
+        assertInvalid(as.token("https://api.example.com"));
+        assertInvalid(as.token(ENDPOINT + "/"));
+        assertInvalid(as.token(ENDPOINT, c -> c.audience((String) null)));
+        assertEquals(200, whoamiWithToken(as.token(ENDPOINT, c -> c.audience(List.of("https://api.example.com",
+                ENDPOINT)))).status());
+    }
+
+    @Test
+    void tokenForAnotherMcpServerOfTheApplicationIsInvalid() {
+        fixture(false);
+        String otherToken = as.token(OTHER_ENDPOINT);
+        assertInvalid(otherToken);
+        assertEquals(200, fixture.callTool(fixture.otherServer, RequestCaller.bearer(OTHER_ENDPOINT, otherToken),
+                "other").status());
+        Exchange mine = fixture.callTool(fixture.otherServer, RequestCaller.bearer(OTHER_ENDPOINT,
+                as.token(ENDPOINT)), "other");
+        assertEquals(401, mine.status());
+        assertEquals("Bearer error=\"invalid_token\", resource_metadata=\"" + OTHER_ENDPOINT
+                + "/.well-known/oauth-protected-resource\"", mine.challenge());
+    }
+
+    @Test
+    void derivedResourceIdentifierFollowsTheRequest() {
+        fixture(false);
+        String token = as.token(ENDPOINT);
+        Exchange elsewhere = fixture.callTool(fixture.protectedServer,
+                RequestCaller.bearer("https://elsewhere.test/app/mcp", token), "whoami");
+        assertEquals(401, elsewhere.status());
+        assertEquals("Bearer error=\"invalid_token\", resource_metadata=\"https://elsewhere.test/app/mcp"
+                + "/.well-known/oauth-protected-resource\"", elsewhere.challenge());
+    }
+
+    @Test
+    void algNoneIsInvalid() {
+        fixture(false);
+        assertInvalid(new PlainJWT(as.claims(ENDPOINT, c -> {
+        })).serialize());
+    }
+
+    @Test
+    void hmacWithThePublicKeyAsSecretIsInvalid() throws JOSEException {
+        fixture(false);
+        byte[] publicKey = as.rsa.toRSAPublicKey().getEncoded();
+        assertInvalid(FakeAuthorizationServer.sign(new JWSHeader.Builder(JWSAlgorithm.HS256)
+                .keyID(as.rsa.getKeyID()).build(), new MACSigner(publicKey), as.claims(ENDPOINT, c -> {
+                })));
+    }
+
+    @Test
+    void signatureByAnUnknownKeyWithAKnownKidIsInvalid() {
+        fixture(false);
+        RSAKey impostor = FakeAuthorizationServer.rsa(as.rsa.getKeyID());
+        assertInvalid(FakeAuthorizationServer.sign(new JWSHeader.Builder(JWSAlgorithm.RS256)
+                .keyID(impostor.getKeyID()).build(), FakeAuthorizationServer.rsaSigner(impostor),
+                as.claims(ENDPOINT, c -> {
+                })));
+    }
+
+    @Test
+    void otherAsymmetricAlgorithmsAreAccepted() {
+        fixture(false);
+        JWTClaimsSet claims = as.claims(ENDPOINT, c -> {
+        });
+        assertEquals(200, whoamiWithToken(FakeAuthorizationServer.sign(new JWSHeader.Builder(JWSAlgorithm.ES256)
+                .keyID(as.ec.getKeyID()).build(), FakeAuthorizationServer.ecSigner(as.ec), claims)).status());
+        assertEquals(200, whoamiWithToken(FakeAuthorizationServer.sign(new JWSHeader.Builder(JWSAlgorithm.PS256)
+                .keyID(as.rsa.getKeyID()).type(JOSEObjectType.JWT).build(),
+                FakeAuthorizationServer.rsaSigner(as.rsa), claims)).status());
+    }
+
+    @Test
+    void typeMustBeAnAccessTokenOrJwt() {
+        fixture(false);
+        JWTClaimsSet claims = as.claims(ENDPOINT, c -> {
+        });
+        assertEquals(200, whoamiWithToken(FakeAuthorizationServer.sign(new JWSHeader.Builder(JWSAlgorithm.RS256)
+                .keyID(as.rsa.getKeyID()).build(), FakeAuthorizationServer.rsaSigner(as.rsa), claims)).status());
+        assertInvalid(FakeAuthorizationServer.sign(new JWSHeader.Builder(JWSAlgorithm.RS256)
+                .keyID(as.rsa.getKeyID()).type(new JOSEObjectType("secevent+jwt")).build(),
+                FakeAuthorizationServer.rsaSigner(as.rsa), claims));
+    }
+
+    @Test
+    void missingPrincipalClaimIsInvalid() {
+        fixture(false);
+        assertInvalid(as.token(ENDPOINT, c -> c.subject(null)));
+    }
+
+    @Test
+    void unknownKidRefreshesTheKeysSoRotationWorks() {
+        fixture(false);
+        assertEquals(200, whoamiWithToken(as.token(ENDPOINT)).status());
+        int before = as.jwksRequests();
+        RSAKey rotated = FakeAuthorizationServer.rsa("rsa-2");
+        as.publish(rotated, as.rsa);
+        String token = FakeAuthorizationServer.sign(new JWSHeader.Builder(JWSAlgorithm.RS256)
+                .keyID(rotated.getKeyID()).build(), FakeAuthorizationServer.rsaSigner(rotated),
+                as.claims(ENDPOINT, c -> {
+                }));
+        assertEquals(200, whoamiWithToken(token).status());
+        assertEquals(before + 1, as.jwksRequests());
+        assertEquals(200, whoamiWithToken(token).status());
+        assertEquals(before + 1, as.jwksRequests(), "the rotated keys are cached");
+    }
+
+    @Test
+    void cachedKeysOutliveAnOutageOfTheJwksEndpoint() throws InterruptedException {
+        fixture(false);
+        assertEquals(200, whoamiWithToken(as.token(ENDPOINT)).status());
+        as.jwksDown(true);
+        Thread.sleep(Fixture.FAST.cacheTtl().toMillis() + 300);
+        assertEquals(200, whoamiWithToken(as.token(ENDPOINT)).status());
+        assertTrue(as.jwksRequests() > 1, "the keys were retrieved again");
+    }
+
+    @Test
+    void unavailableKeysMakeTokensInvalid() {
+        as.jwksDown(true);
+        fixture(false);
+        assertInvalid(as.token(ENDPOINT));
+    }
+
+    @Test
+    void keysAreFoundThroughOpenIdConnectDiscovery() {
+        fixture(true);
+        assertEquals(200, whoamiWithToken(as.token(ENDPOINT)).status());
+    }
+
+    @Test
+    void keysAreFoundThroughRfc8414Metadata() {
+        as.oidcDiscovery(false);
+        fixture(true);
+        assertEquals(200, whoamiWithToken(as.token(ENDPOINT)).status());
+    }
+
+    @Test
+    void metadataNamingAnotherIssuerIsRejected() {
+        as.advertiseIssuer("https://evil.example.com/realm");
+        fixture(true);
+        assertInvalid(as.token(ENDPOINT));
+        assertEquals(0, as.jwksRequests());
+    }
+
+    @Test
+    void metadataUrlsFollowOidcAndRfc8414() {
+        assertEquals(List.of("https://as.test/realms/x/.well-known/openid-configuration",
+                "https://as.test/.well-known/oauth-authorization-server/realms/x"),
+                IssuerJwkSetSource.metadataUrls("https://as.test/realms/x/").stream().map(Object::toString)
+                        .toList());
+        assertEquals(List.of("https://as.test/.well-known/openid-configuration",
+                "https://as.test/.well-known/oauth-authorization-server"),
+                IssuerJwkSetSource.metadataUrls("https://as.test").stream().map(Object::toString).toList());
+    }
+
+    @Test
+    void claimsAreReadByDottedPath() {
+        Map<String, Object> claims = Map.of("realm_access", Map.of("roles", List.of("a", "b")),
+                "https://example.com/roles", "c", "roles", List.of("d", 1));
+        assertEquals(java.util.Set.of("a", "b"), TokenCaller.roles(TokenCaller.claim(claims, "realm_access.roles")));
+        assertEquals(java.util.Set.of("c"), TokenCaller.roles(TokenCaller.claim(claims, "https://example.com/roles")));
+        assertEquals(java.util.Set.of("d"), TokenCaller.roles(TokenCaller.claim(claims, "roles")));
+        assertEquals(java.util.Set.of(), TokenCaller.roles(TokenCaller.claim(claims, "realm_access.missing.x")));
+    }
+}

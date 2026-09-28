@@ -52,17 +52,47 @@ public final class McpTransport {
     }
 
     /**
-     * The checks every request to an MCP Endpoint passes, whatever its HTTP method.
+     * The checks every request to an MCP Endpoint passes, whatever its HTTP method: the {@code Origin} check, then
+     * authentication.
      *
      * @param origin the {@code Origin} header, or {@code null}
-     * @return the response that rejects the request, or empty to proceed
+     * @param caller the caller according to the Runtime
+     * @return the caller to process the request for, or the response that rejects the request
      */
-    public Optional<HttpReply> screen(McpServerModel server, String origin, Caller caller) {
+    public Screening screen(McpServerModel server, String origin, Caller caller) {
         if (!origins.permits(origin)) {
-            return Optional.of(HttpReply.json(403, Json.write(Dispatcher.error(null,
+            return new Reply(HttpReply.json(403, Json.write(Dispatcher.error(null,
                     new McpError(McpError.INVALID_REQUEST, "Origin not allowed: " + origin, null, 403)).message())));
         }
-        return dispatcher.services().access().authenticate(server, caller).map(McpTransport::reply);
+        AccessPolicy.Admission admission = dispatcher.services().access().authenticate(server, caller);
+        if (admission instanceof AccessPolicy.Rejected rejected) {
+            return new Reply(reply(rejected.rejection()));
+        }
+        return new Admitted(((AccessPolicy.Admitted) admission).caller());
+    }
+
+    /**
+     * The outcome of {@link #screen}: a {@link Reply} that rejects the request, or {@link Admitted}.
+     */
+    public sealed interface Screening {
+    }
+
+    /**
+     * The request proceeds on behalf of {@code caller}.
+     */
+    public record Admitted(Caller caller) implements Screening {
+    }
+
+    /**
+     * The Protected Resource Metadata (RFC 9728) of a protected MCP Server, or {@code 404} for other MCP Servers.
+     * It is served to anyone, without the {@code Origin} check.
+     *
+     * @param caller the caller according to the Runtime, which tells the MCP Endpoint URL
+     */
+    public HttpReply resourceMetadata(McpServerModel server, Caller caller) {
+        return dispatcher.services().access().resourceMetadata(server, caller)
+                .map(metadata -> HttpReply.json(200, Json.write(metadata)))
+                .orElseGet(() -> new HttpReply(404, Map.of(), null));
     }
 
     /**
@@ -74,7 +104,7 @@ public final class McpTransport {
     /**
      * Answer with this response.
      */
-    public record Reply(HttpReply reply) implements Plan {
+    public record Reply(HttpReply reply) implements Plan, Screening {
     }
 
     /**

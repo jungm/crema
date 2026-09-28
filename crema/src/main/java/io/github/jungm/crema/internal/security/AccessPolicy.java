@@ -5,6 +5,7 @@ import java.util.Optional;
 
 import io.github.jungm.crema.internal.model.Feature;
 import io.github.jungm.crema.internal.model.McpServerModel;
+import jakarta.json.JsonObject;
 
 /**
  * Decides who may use an MCP Server and its Features.
@@ -16,8 +17,8 @@ public interface AccessPolicy {
      */
     AccessPolicy PERMIT_ALL = new AccessPolicy() {
         @Override
-        public Optional<Rejection> authenticate(McpServerModel server, Caller caller) {
-            return Optional.empty();
+        public Admission authenticate(McpServerModel server, Caller caller) {
+            return new Admitted(caller);
         }
 
         @Override
@@ -34,18 +35,28 @@ public interface AccessPolicy {
         public boolean isPrivate(McpServerModel server) {
             return false;
         }
+
+        @Override
+        public Optional<JsonObject> resourceMetadata(McpServerModel server, Caller caller) {
+            return Optional.empty();
+        }
     };
 
     /**
-     * Checks a request before any MCP processing, after the {@code Origin} check.
+     * Checks a request before any MCP processing, after the {@code Origin} check, and determines the caller that
+     * the rest of the request is processed for.
      *
-     * @return the response that rejects the request, such as a {@code 401} challenge, or empty to proceed
+     * @param caller the caller according to the Runtime
+     * @return the caller to process the request for, or the response that rejects the request, such as a
+     *         {@code 401} challenge
      */
-    Optional<Rejection> authenticate(McpServerModel server, Caller caller);
+    Admission authenticate(McpServerModel server, Caller caller);
 
     /**
      * Whether the caller may use a Feature or Completion Method. Features that aren't permitted are omitted from
      * lists.
+     *
+     * @param caller a caller {@link #authenticate admitted} by this policy
      */
     boolean permits(McpServerModel server, Feature feature, Caller caller);
 
@@ -59,6 +70,31 @@ public interface AccessPolicy {
      * {@code private}.
      */
     boolean isPrivate(McpServerModel server);
+
+    /**
+     * The Protected Resource Metadata (RFC 9728) of a protected MCP Server; empty for other MCP Servers.
+     *
+     * @param caller the unauthenticated caller of the metadata document, which tells the MCP Endpoint URL
+     */
+    Optional<JsonObject> resourceMetadata(McpServerModel server, Caller caller);
+
+    /**
+     * The outcome of {@link #authenticate}.
+     */
+    sealed interface Admission permits Admitted, Rejected {
+    }
+
+    /**
+     * The request proceeds on behalf of {@code caller}.
+     */
+    record Admitted(Caller caller) implements Admission {
+    }
+
+    /**
+     * The request is answered with {@code rejection}.
+     */
+    record Rejected(Rejection rejection) implements Admission {
+    }
 
     /**
      * An HTTP response without a JSON-RPC body.
