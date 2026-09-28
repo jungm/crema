@@ -42,14 +42,6 @@ public interface Caller {
     boolean isUserInRole(String role);
 
     /**
-     * The URL of the MCP Endpoint as the request addresses it, without a trailing slash, or {@code null} when
-     * unknown.
-     */
-    default String endpointUrl() {
-        return null;
-    }
-
-    /**
      * The caller as Feature Methods see it, or {@code null} for an anonymous caller. The claims are empty unless
      * the caller was authenticated by a bearer token.
      */

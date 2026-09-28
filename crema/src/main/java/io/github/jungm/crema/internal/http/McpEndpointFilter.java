@@ -51,7 +51,7 @@ public class McpEndpointFilter implements ContainerRequestFilter {
         McpTransport transport = target.get().transport();
         Function<String, List<String>> headers = JaxRs.headers(request.getHeaders());
         McpTransport.Screening screening = transport.screen(target.get().server(), JaxRs.first(headers, "Origin"),
-                JaxRs.caller(request.getSecurityContext(), headers, request.getUriInfo()));
+                JaxRs.caller(request.getSecurityContext(), headers));
         if (screening instanceof McpTransport.Reply rejected) {
             abort(request, rejected.reply());
             return;

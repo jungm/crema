@@ -43,9 +43,10 @@ import jakarta.annotation.security.RolesAllowed;
 import jakarta.json.JsonObject;
 
 /**
- * Three MCP Servers in one application, driven through {@link McpTransport} the way the JAX-RS layer drives it:
+ * Four MCP Servers in one application, driven through {@link McpTransport} the way the JAX-RS layer drives it:
  * the protected default MCP Server ({@code @RolesAllowed("user")}), the protected {@code other} MCP Server
- * ({@code @RolesAllowed("**")}), and the open {@code open} MCP Server.
+ * ({@code @RolesAllowed("**")}), the open {@code open} MCP Server with role-restricted Features, and the open
+ * {@code plain} MCP Server without any.
  */
 final class Fixture {
 
@@ -69,6 +70,10 @@ final class Fixture {
 
     @McpServerInfo(name = "open")
     static class OpenApp {
+    }
+
+    @McpServerInfo(name = "plain")
+    static class PlainApp {
     }
 
     public static class Features {
@@ -178,11 +183,29 @@ final class Fixture {
         }
     }
 
+    /**
+     * An open MCP Server without any role restrictions.
+     */
+    @McpServer("plain")
+    public static class PlainFeatures {
+
+        @Tool
+        public String hello() {
+            return "hello";
+        }
+
+        @Resource(uri = "test://plain")
+        public String plain() {
+            return "plain";
+        }
+    }
+
     final McpTransport transport;
     final CremaAccessPolicy policy;
     final McpServerModel protectedServer;
     final McpServerModel otherServer;
     final McpServerModel openServer;
+    final McpServerModel plainServer;
 
     Fixture(Protection defaultProtection, Protection otherProtection) {
         FeatureScanner scanner = new FeatureScanner(MAPPING, IconLookup.reflective());
@@ -190,9 +213,10 @@ final class Fixture {
         Scanning.scan(scanner, AdminFeatures.class, new AdminFeatures());
         Scanning.scan(scanner, OtherFeatures.class, new OtherFeatures());
         Scanning.scan(scanner, OpenFeatures.class, new OpenFeatures());
+        Scanning.scan(scanner, PlainFeatures.class, new PlainFeatures());
         assertEquals(List.of(), scanner.problems());
         List<ServerRegistry.Declaration> declarations = new ArrayList<>();
-        for (Class<?> app : List.of(ProtectedApp.class, OtherApp.class, OpenApp.class)) {
+        for (Class<?> app : List.of(ProtectedApp.class, OtherApp.class, OpenApp.class, PlainApp.class)) {
             declarations.add(new ServerRegistry.Declaration(app, ServerSettings.resolve(
                     app.getAnnotation(McpServerInfo.class), ConfigLookup.none(), Optional::empty), List.of()));
         }
@@ -210,6 +234,7 @@ final class Fixture {
         protectedServer = transport.server(ProtectedApp.class).orElseThrow();
         otherServer = transport.server(OtherApp.class).orElseThrow();
         openServer = transport.server(OpenApp.class).orElseThrow();
+        plainServer = transport.server(PlainApp.class).orElseThrow();
     }
 
     static Protection protection(FakeAuthorizationServer as, String server, String resource, String rolesClaim,
@@ -283,28 +308,26 @@ final class Fixture {
     static final class RequestCaller implements Caller {
 
         private final Map<String, List<String>> headers = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
-        private final String endpointUrl;
         private final Principal principal;
         private final Set<String> roles;
 
-        RequestCaller(String endpointUrl, Principal principal, Set<String> roles) {
-            this.endpointUrl = endpointUrl;
+        RequestCaller(Principal principal, Set<String> roles) {
             this.principal = principal;
             this.roles = roles;
         }
 
-        static RequestCaller anonymous(String endpointUrl) {
-            return new RequestCaller(endpointUrl, null, Set.of());
+        static RequestCaller anonymous() {
+            return new RequestCaller(null, Set.of());
         }
 
-        static RequestCaller withAuthorization(String endpointUrl, String... authorization) {
-            RequestCaller caller = anonymous(endpointUrl);
+        static RequestCaller withAuthorization(String... authorization) {
+            RequestCaller caller = anonymous();
             caller.headers.put("Authorization", List.of(authorization));
             return caller;
         }
 
-        static RequestCaller bearer(String endpointUrl, String token) {
-            return withAuthorization(endpointUrl, "Bearer " + token);
+        static RequestCaller bearer(String token) {
+            return withAuthorization("Bearer " + token);
         }
 
         @Override
@@ -320,11 +343,6 @@ final class Fixture {
         @Override
         public boolean isUserInRole(String role) {
             return roles.contains(role);
-        }
-
-        @Override
-        public String endpointUrl() {
-            return endpointUrl;
         }
     }
 }

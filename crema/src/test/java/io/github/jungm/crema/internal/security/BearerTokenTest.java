@@ -48,13 +48,13 @@ class BearerTokenTest {
     }
 
     private Fixture fixture(boolean discover) {
-        fixture = new Fixture(Fixture.protection(as, "default", null, "groups", discover),
+        fixture = new Fixture(Fixture.protection(as, "default", ENDPOINT, "groups", discover),
                 Fixture.protection(as, "other", OTHER_ENDPOINT, "groups", discover));
         return fixture;
     }
 
     private Exchange whoami(String authorization) {
-        return fixture.callTool(fixture.protectedServer, RequestCaller.withAuthorization(ENDPOINT, authorization),
+        return fixture.callTool(fixture.protectedServer, RequestCaller.withAuthorization(authorization),
                 "whoami");
     }
 
@@ -80,7 +80,7 @@ class BearerTokenTest {
     @Test
     void missingAuthorizationGetsAChallenge() {
         fixture(false);
-        Exchange exchange = fixture.callTool(fixture.protectedServer, RequestCaller.anonymous(ENDPOINT), "everyone");
+        Exchange exchange = fixture.callTool(fixture.protectedServer, RequestCaller.anonymous(), "everyone");
         assertEquals(401, exchange.status());
         assertEquals(CHALLENGE, exchange.challenge());
         assertNull(exchange.message());
@@ -90,7 +90,7 @@ class BearerTokenTest {
     void everyMethodNeedsAToken() {
         fixture(false);
         for (String method : List.of("server/discover", "tools/list", "prompts/list")) {
-            assertEquals(401, fixture.call(fixture.protectedServer, RequestCaller.anonymous(ENDPOINT), method, "",
+            assertEquals(401, fixture.call(fixture.protectedServer, RequestCaller.anonymous(), method, "",
                     null).status(), method);
         }
     }
@@ -118,7 +118,7 @@ class BearerTokenTest {
         assertEquals(INVALID_TOKEN, whoami("Bearer").challenge());
         assertEquals(INVALID_TOKEN, whoami("Bearer   ").challenge());
         Exchange twice = fixture.callTool(fixture.protectedServer,
-                RequestCaller.withAuthorization(ENDPOINT, "Bearer " + as.token(ENDPOINT), "Bearer x"), "whoami");
+                RequestCaller.withAuthorization("Bearer " + as.token(ENDPOINT), "Bearer x"), "whoami");
         assertEquals(401, twice.status());
         assertEquals(INVALID_TOKEN, twice.challenge());
     }
@@ -181,24 +181,24 @@ class BearerTokenTest {
         fixture(false);
         String otherToken = as.token(OTHER_ENDPOINT);
         assertInvalid(otherToken);
-        assertEquals(200, fixture.callTool(fixture.otherServer, RequestCaller.bearer(OTHER_ENDPOINT, otherToken),
+        assertEquals(200, fixture.callTool(fixture.otherServer, RequestCaller.bearer(otherToken),
                 "other").status());
-        Exchange mine = fixture.callTool(fixture.otherServer, RequestCaller.bearer(OTHER_ENDPOINT,
-                as.token(ENDPOINT)), "other");
+        Exchange mine = fixture.callTool(fixture.otherServer, RequestCaller.bearer(as.token(ENDPOINT)), "other");
         assertEquals(401, mine.status());
         assertEquals("Bearer error=\"invalid_token\", resource_metadata=\"" + OTHER_ENDPOINT
                 + "/.well-known/oauth-protected-resource\"", mine.challenge());
     }
 
     @Test
-    void derivedResourceIdentifierFollowsTheRequest() {
-        fixture(false);
-        String token = as.token(ENDPOINT);
-        Exchange elsewhere = fixture.callTool(fixture.protectedServer,
-                RequestCaller.bearer("https://elsewhere.test/app/mcp", token), "whoami");
-        assertEquals(401, elsewhere.status());
-        assertEquals("Bearer error=\"invalid_token\", resource_metadata=\"https://elsewhere.test/app/mcp"
-                + "/.well-known/oauth-protected-resource\"", elsewhere.challenge());
+    void theConfiguredResourceIsTheAudienceAndLocatesTheMetadata() {
+        String resource = "https://public.test/ctx/mcp/";
+        fixture = new Fixture(Fixture.protection(as, "default", resource, "groups", false),
+                Fixture.protection(as, "other", OTHER_ENDPOINT, "groups", false));
+        assertEquals(200, whoamiWithToken(as.token(resource)).status());
+        Exchange withoutSlash = whoamiWithToken(as.token("https://public.test/ctx/mcp"));
+        assertEquals(401, withoutSlash.status());
+        assertEquals("Bearer error=\"invalid_token\", resource_metadata=\"https://public.test/ctx/mcp"
+                + "/.well-known/oauth-protected-resource\"", withoutSlash.challenge());
     }
 
     @Test
@@ -237,6 +237,21 @@ class BearerTokenTest {
         assertEquals(200, whoamiWithToken(FakeAuthorizationServer.sign(new JWSHeader.Builder(JWSAlgorithm.PS256)
                 .keyID(as.rsa.getKeyID()).type(JOSEObjectType.JWT).build(),
                 FakeAuthorizationServer.rsaSigner(as.rsa), claims)).status());
+    }
+
+    @Test
+    void onlyRsaAndEcdsaAlgorithmsAreAccepted() {
+        assertEquals(java.util.Set.of(JWSAlgorithm.RS256, JWSAlgorithm.RS384, JWSAlgorithm.RS512,
+                JWSAlgorithm.PS256, JWSAlgorithm.PS384, JWSAlgorithm.PS512, JWSAlgorithm.ES256, JWSAlgorithm.ES384,
+                JWSAlgorithm.ES512), TokenValidator.ALGORITHMS);
+    }
+
+    @Test
+    void edDsaIsInvalid() {
+        fixture(false);
+        String payload = as.token(ENDPOINT).split("\\.")[1];
+        String header = com.nimbusds.jose.util.Base64URL.encode("{\"alg\":\"EdDSA\",\"kid\":\"ed-1\"}").toString();
+        assertInvalid(header + "." + payload + "." + com.nimbusds.jose.util.Base64URL.encode(new byte[64]));
     }
 
     @Test
@@ -302,6 +317,56 @@ class BearerTokenTest {
         as.oidcDiscovery(false);
         fixture(true);
         assertEquals(200, whoamiWithToken(as.token(ENDPOINT)).status());
+    }
+
+    @Test
+    void aStalledMetadataResponseTimesOutAndDiscoveryIsRetried() throws InterruptedException {
+        as.stallMetadata(true);
+        fixture(true);
+        long start = System.nanoTime();
+        assertInvalid(as.token(ENDPOINT));
+        long elapsed = java.util.concurrent.TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start);
+        assertTrue(elapsed < 15_000, "the read timeout bounds the metadata retrieval, but it took " + elapsed + " ms");
+        assertTrue(as.metadataRequests() > 0);
+        as.stallMetadata(false);
+        int status = 0;
+        for (long deadline = System.nanoTime() + 10_000_000_000L; status != 200 && System.nanoTime() < deadline;) {
+            Thread.sleep(Fixture.FAST.rateLimit().toMillis() + 100);
+            status = whoamiWithToken(as.token(ENDPOINT)).status();
+        }
+        assertEquals(200, status, "the metadata is read again once it responds");
+    }
+
+    @Test
+    void redirectsOfTheJwkSetAreNotFollowed() {
+        as.redirect(true);
+        fixture(false);
+        assertInvalid(as.token(ENDPOINT));
+        assertEquals(0, as.movedRequests());
+    }
+
+    @Test
+    void redirectsOfTheMetadataAreNotFollowed() {
+        as.redirect(true);
+        fixture(true);
+        assertInvalid(as.token(ENDPOINT));
+        assertEquals(0, as.movedRequests());
+    }
+
+    @Test
+    void plainHttpJwksUriIsAcceptedOnlyForLoopbackIssuers() {
+        assertTrue(IssuerJwkSetSource.isAcceptableJwksUri(java.net.URI.create("https://as.test/keys"),
+                "https://as.test"));
+        assertTrue(IssuerJwkSetSource.isAcceptableJwksUri(java.net.URI.create("http://127.0.0.1:8080/keys"),
+                "http://localhost:8080/realm"));
+        assertTrue(IssuerJwkSetSource.isAcceptableJwksUri(java.net.URI.create("http://localhost/keys"),
+                "https://127.0.0.1/realm"));
+        assertEquals(false, IssuerJwkSetSource.isAcceptableJwksUri(java.net.URI.create("http://localhost:8080/keys"),
+                "https://as.test"));
+        assertEquals(false, IssuerJwkSetSource.isAcceptableJwksUri(java.net.URI.create("http://as.test/keys"),
+                "http://localhost"));
+        assertEquals(false, IssuerJwkSetSource.isAcceptableJwksUri(java.net.URI.create("file:///etc/keys"),
+                "http://localhost"));
     }
 
     @Test

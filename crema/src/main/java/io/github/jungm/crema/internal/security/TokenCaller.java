@@ -22,7 +22,7 @@ final class TokenCaller implements Caller {
 
     /**
      * @param application the {@code McpApplication} subclass of the MCP Server the token was validated for
-     * @param request the caller according to the Runtime, for headers and the MCP Endpoint URL
+     * @param request the caller according to the Runtime, for headers
      */
     TokenCaller(Class<?> application, Caller request, CallerPrincipal principal, Set<String> roles) {
         this.application = application;
@@ -51,11 +51,6 @@ final class TokenCaller implements Caller {
     @Override
     public boolean isUserInRole(String role) {
         return roles.contains(role);
-    }
-
-    @Override
-    public String endpointUrl() {
-        return request.endpointUrl();
     }
 
     @Override

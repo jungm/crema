@@ -45,11 +45,11 @@ class RolesTest {
     }
 
     private RequestCaller user() {
-        return RequestCaller.bearer(ENDPOINT, as.token(ENDPOINT));
+        return RequestCaller.bearer(as.token(ENDPOINT));
     }
 
     private RequestCaller withGroups(String... groups) {
-        return RequestCaller.bearer(ENDPOINT, as.token(ENDPOINT, c -> c.claim("groups", List.of(groups))));
+        return RequestCaller.bearer(as.token(ENDPOINT, c -> c.claim("groups", List.of(groups))));
     }
 
     @Test
@@ -64,7 +64,7 @@ class RolesTest {
     @Test
     void rolesComeFromKeycloakRealmAccess() {
         fixture("realm_access.roles");
-        RequestCaller admin = RequestCaller.bearer(ENDPOINT, as.token(ENDPOINT,
+        RequestCaller admin = RequestCaller.bearer(as.token(ENDPOINT,
                 c -> c.claim("realm_access", Map.of("roles", List.of("admin", "offline_access")))));
         assertEquals(200, fixture.callTool(fixture.protectedServer, admin, "admins").status());
         assertEquals(403, fixture.callTool(fixture.protectedServer, user(), "users").status(),
@@ -74,7 +74,7 @@ class RolesTest {
     @Test
     void rolesComeFromEntraRoles() {
         fixture("roles");
-        RequestCaller admin = RequestCaller.bearer(ENDPOINT, as.token(ENDPOINT,
+        RequestCaller admin = RequestCaller.bearer(as.token(ENDPOINT,
                 c -> c.claim("roles", List.of("admin"))));
         assertEquals(200, fixture.callTool(fixture.protectedServer, admin, "admins").status());
         assertEquals(403, fixture.callTool(fixture.protectedServer, admin, "users").status());
@@ -110,7 +110,7 @@ class RolesTest {
         assertEquals(200, fixture.callTool(fixture.protectedServer, noRoles, "everyone").status());
         assertEquals(403, fixture.callTool(fixture.protectedServer, noRoles, "users").status());
         assertEquals(200, fixture.callTool(fixture.otherServer,
-                RequestCaller.bearer(OTHER_ENDPOINT, as.token(OTHER_ENDPOINT, c -> c.claim("groups", List.of()))),
+                RequestCaller.bearer(as.token(OTHER_ENDPOINT, c -> c.claim("groups", List.of()))),
                 "other").status());
     }
 
@@ -141,7 +141,7 @@ class RolesTest {
     @Test
     void openServerUsesTheRuntimeCaller() {
         fixture("groups");
-        RequestCaller anonymous = RequestCaller.anonymous(OPEN_ENDPOINT);
+        RequestCaller anonymous = RequestCaller.anonymous();
         Exchange list = fixture.listTools(fixture.openServer, anonymous);
         assertEquals(Set.of("free", "whoami"), list.names("tools"));
         assertEquals("private", list.result().getString("cacheScope"), "the open server has role restrictions");
@@ -151,20 +151,43 @@ class RolesTest {
         assertEquals("anonymous", fixture.callTool(fixture.openServer, anonymous, "whoami").text());
 
         Principal bob = () -> "bob";
-        RequestCaller admin = new RequestCaller(OPEN_ENDPOINT, bob, Set.of("admin"));
+        RequestCaller admin = new RequestCaller(bob, Set.of("admin"));
         assertEquals(Set.of("free", "admin", "authenticated", "whoami"),
                 fixture.listTools(fixture.openServer, admin).names("tools"));
         assertEquals(200, fixture.callTool(fixture.openServer, admin, "admin").status());
         assertEquals("bob {} bob", fixture.callTool(fixture.openServer, admin, "whoami").text());
-        assertEquals(200, fixture.callTool(fixture.openServer, new RequestCaller(OPEN_ENDPOINT, bob, Set.of()),
+        assertEquals(200, fixture.callTool(fixture.openServer, new RequestCaller(bob, Set.of()),
                 "authenticated").status());
+    }
+
+    @Test
+    void cacheScopeIsPrivateOnlyIfTheResultMayDependOnTheCaller() {
+        fixture("groups");
+        String read = ",\"uri\":\"test://plain\"";
+        RequestCaller anonymous = RequestCaller.anonymous();
+        assertEquals("public", fixture.listTools(fixture.plainServer, anonymous).result().getString("cacheScope"));
+        assertEquals("public", fixture.call(fixture.plainServer, anonymous, "resources/read", read, "test://plain")
+                .result().getString("cacheScope"));
+        assertEquals("public", fixture.call(fixture.plainServer, anonymous, "server/discover", "", null).result()
+                .getString("cacheScope"));
+
+        RequestCaller bob = new RequestCaller(() -> "bob", Set.of());
+        assertEquals("private", fixture.listTools(fixture.plainServer, bob).result().getString("cacheScope"),
+                "the Runtime authenticated the caller");
+        assertEquals("private", fixture.call(fixture.plainServer, bob, "resources/read", read, "test://plain")
+                .result().getString("cacheScope"));
+
+        assertEquals("private", fixture.listTools(fixture.openServer, anonymous).result().getString("cacheScope"),
+                "Features are restricted to roles");
+        assertEquals("private", fixture.listTools(fixture.protectedServer, user()).result().getString("cacheScope"),
+                "the MCP Server is protected");
     }
 
     @Test
     void openServerIgnoresBearerTokens() {
         fixture("groups");
         Exchange exchange = fixture.callTool(fixture.openServer,
-                RequestCaller.bearer(OPEN_ENDPOINT, as.token(OPEN_ENDPOINT, c -> c.claim("groups", List.of("admin")))),
+                RequestCaller.bearer(as.token(OPEN_ENDPOINT, c -> c.claim("groups", List.of("admin")))),
                 "admin");
         assertEquals(403, exchange.status());
     }
@@ -172,7 +195,7 @@ class RolesTest {
     @Test
     void protectedServerIgnoresTheRuntimeCaller() {
         fixture("groups");
-        RequestCaller runtimeAdmin = new RequestCaller(ENDPOINT, () -> "bob", Set.of("user", "admin"));
+        RequestCaller runtimeAdmin = new RequestCaller(() -> "bob", Set.of("user", "admin"));
         assertEquals(401, fixture.callTool(fixture.protectedServer, runtimeAdmin, "users").status());
         assertEquals(false, fixture.policy.permits(fixture.protectedServer,
                 fixture.protectedServer.tool("everyone").orElseThrow(), runtimeAdmin));
@@ -181,23 +204,11 @@ class RolesTest {
     @Test
     void protectedResourceMetadata() {
         fixture("groups");
-        HttpReply metadata = fixture.transport.resourceMetadata(fixture.protectedServer,
-                RequestCaller.anonymous("https://ignored.test/mcp"));
+        HttpReply metadata = fixture.transport.resourceMetadata(fixture.protectedServer);
         assertEquals(200, metadata.status());
         assertEquals(Json.parse("{\"resource\":\"" + ENDPOINT + "\",\"authorization_servers\":[\"" + as.issuer()
                 + "\"],\"bearer_methods_supported\":[\"header\"]}"), Json.parse(metadata.body()));
-        assertEquals(404, fixture.transport.resourceMetadata(fixture.openServer,
-                RequestCaller.anonymous(OPEN_ENDPOINT)).status());
-    }
-
-    @Test
-    void protectedResourceMetadataWithDerivedResource() {
-        fixture = new Fixture(Fixture.protection(as, "default", null, "groups", false),
-                Fixture.protection(as, "other", null, "groups", false));
-        HttpReply metadata = fixture.transport.resourceMetadata(fixture.protectedServer,
-                RequestCaller.anonymous("https://public.test/ctx/mcp"));
-        assertEquals("https://public.test/ctx/mcp",
-                Json.parse(metadata.body()).asJsonObject().getString("resource"));
+        assertEquals(404, fixture.transport.resourceMetadata(fixture.openServer).status());
     }
 
     @Test
@@ -212,7 +223,7 @@ class RolesTest {
         assertEquals("Bearer", context.getAuthenticationScheme());
         assertEquals(false, context.isSecure());
         assertEquals(admitted, TokenSecurityContext.caller(context).orElseThrow());
-        assertEquals(true, TokenSecurityContext.replacing(null, RequestCaller.anonymous(ENDPOINT)).isEmpty());
+        assertEquals(true, TokenSecurityContext.replacing(null, RequestCaller.anonymous()).isEmpty());
         assertEquals(new io.github.jungm.crema.internal.http.McpTransport.Admitted(admitted),
                 fixture.transport.screen(fixture.protectedServer, null, admitted), "admitted callers pass again");
     }

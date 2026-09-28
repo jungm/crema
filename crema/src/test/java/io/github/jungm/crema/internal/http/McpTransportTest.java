@@ -390,7 +390,7 @@ class McpTransportTest {
             }
 
             @Override
-            public Optional<JsonObject> resourceMetadata(McpServerModel server, Caller caller) {
+            public Optional<JsonObject> resourceMetadata(McpServerModel server) {
                 return Optional.empty();
             }
 
@@ -406,7 +406,7 @@ class McpTransportTest {
             }
 
             @Override
-            public boolean isPrivate(McpServerModel server) {
+            public boolean isPrivate(McpServerModel server, Caller caller) {
                 return true;
             }
         };

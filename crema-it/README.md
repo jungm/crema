@@ -95,7 +95,8 @@ scored scenarios pass on every Runtime.
 - `/ui`: a servlet with `@ServletSecurity(@HttpConstraint(rolesAllowed = "user"))`, protected by
   `@OpenIdAuthenticationMechanismDefinition` whose `providerURI` comes from MP Config through EL.
 - `META-INF/microprofile-config.properties`: `crema.default-server.issuer` and the OIDC provider URI, both the fake
-  Authorization Server. `resource` isn't set, so the Resource Identifier is derived from the request URL.
+  Authorization Server, and `crema.default-server.resource` = `https://mcp.example.test/security/mcp`, a public URL
+  as behind a reverse proxy, which differs from the URL the tests send requests to.
 
 The fake Authorization Server runs in the test JVM on a loopback port: OpenID Connect discovery, a JWK set that the
 tests rotate, and an authorization endpoint. Tests mint tokens with Nimbus' signers. The WAR needs nothing
@@ -108,12 +109,12 @@ TomEE 10.2.0, WildFly 41.0.1, Open Liberty 26.0.0.9 and WebSphere Liberty 26.0.0
 | # | Check | Result on every Runtime |
 |---|-------|-------------------------|
 | 1 | WAR with a protected MCP Server and the OIDC mechanism deploys | Yes. |
-| 2 | `/mcp` without token (`POST` and `GET`) | Crema's `401`, `WWW-Authenticate: Bearer resource_metadata="<base>/mcp/.well-known/oauth-protected-resource"`, empty body. |
-| 3 | `/mcp` with an expired, not-yet-valid, wrong-issuer, wrong-audience (the open MCP Server's, the API's), foreign-key, `alg: none`, HS256-with-the-public-key or malformed token | Crema's `401` with `error="invalid_token"` and `resource_metadata`, empty body. No Runtime `401`. |
+| 2 | `/mcp` without token (`POST` and `GET`) | Crema's `401`, `WWW-Authenticate: Bearer resource_metadata="<resource>/.well-known/oauth-protected-resource"`, empty body. |
+| 3 | `/mcp` with an expired, not-yet-valid, wrong-issuer, wrong-audience (the request URL, the open MCP Server's, the API's), foreign-key, `alg: none`, HS256-with-the-public-key or malformed token | Crema's `401` with `error="invalid_token"` and `resource_metadata`, empty body. No Runtime `401`. |
 | 4 | `/mcp` with a valid token | `200`; `tools/list` holds only the permitted Tools, with `cacheScope: private`; the Feature Method sees `alice` and the token's claims. |
 | 5 | Valid token without the Feature's role | `403`, `WWW-Authenticate: Bearer error="insufficient_scope", resource_metadata="…"`. |
 | 6 | Token signed with a key published after the first request | `200`: Nimbus refreshes the JWK set for the unknown `kid`. |
-| 7 | `GET <base>/mcp/.well-known/oauth-protected-resource` with a foreign `Origin` | `200` JSON with `resource` = `<base>/mcp` (as the client addressed it), `authorization_servers` and `bearer_methods_supported`. `404` for the open MCP Server. |
+| 7 | `GET <base>/mcp/.well-known/oauth-protected-resource` with a foreign `Origin` | `200` JSON with `resource` = the configured `resource`, `authorization_servers` and `bearer_methods_supported`. `404` for the open MCP Server. |
 | 8 | `/open` anonymous; with a bearer token | Runtime caller, anonymous: the `admin` Tool is hidden and answers `403` without `WWW-Authenticate`. A bearer token doesn't change the caller. |
 | 9 | `/ui` without login | `302` to the Authorization Server's authorization endpoint. |
 | 10 | `/api` without token; with an MCP token | `200` and anonymous in both cases: the Runtime ignores bearer tokens and doesn't see Crema's token callers. |

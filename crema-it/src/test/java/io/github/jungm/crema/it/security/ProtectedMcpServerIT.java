@@ -49,6 +49,12 @@ import io.github.jungm.crema.it.support.Findings;
 @RunAsClient
 class ProtectedMcpServerIT {
 
+    /**
+     * The protected MCP Server's public URL, as behind a reverse proxy: tokens are issued for it, and it differs
+     * from the URL the tests send requests to.
+     */
+    private static final String RESOURCE = "https://mcp.example.test/security/mcp";
+
     private static final FakeAuthorizationServer AS = FakeAuthorizationServer.start();
     private static final Findings FINDINGS = Findings.of(ProtectedMcpServerIT.class);
 
@@ -62,7 +68,7 @@ class ProtectedMcpServerIT {
 
     @Deployment(testable = false)
     static WebArchive deployment() {
-        return SecurityWar.create("security", AS.issuer());
+        return SecurityWar.create("security", AS.issuer(), RESOURCE);
     }
 
     @AfterAll
@@ -74,8 +80,8 @@ class ProtectedMcpServerIT {
         return base.toString() + "mcp";
     }
 
-    private String metadataUrl() {
-        return endpoint() + "/.well-known/oauth-protected-resource";
+    private static String metadataUrl() {
+        return RESOURCE + "/.well-known/oauth-protected-resource";
     }
 
     private String challenge() {
@@ -106,17 +112,18 @@ class ProtectedMcpServerIT {
     @Test
     void invalidTokensAreRejectedByCrema() {
         Map<String, String> tokens = new LinkedHashMap<>();
-        tokens.put("expired", AS.token(endpoint(), c -> c.expirationTime(Date.from(Instant.now()
+        tokens.put("expired", AS.token(RESOURCE, c -> c.expirationTime(Date.from(Instant.now()
                 .minusSeconds(3600)))));
-        tokens.put("not yet valid", AS.token(endpoint(), c -> c.notBeforeTime(Date.from(Instant.now()
+        tokens.put("not yet valid", AS.token(RESOURCE, c -> c.notBeforeTime(Date.from(Instant.now()
                 .plusSeconds(3600)))));
-        tokens.put("wrong issuer", AS.token(endpoint(), c -> c.issuer("https://evil.example.com/realm")));
+        tokens.put("wrong issuer", AS.token(RESOURCE, c -> c.issuer("https://evil.example.com/realm")));
+        tokens.put("audience of the request URL", AS.token(endpoint()));
         tokens.put("audience of the open MCP Server", AS.token(base + "open"));
         tokens.put("audience of the API", AS.token(base + "api"));
         tokens.put("unknown signing key", FakeAuthorizationServer.sign(FakeAuthorizationServer.rsa(AS.key
-                .getKeyID()), JWSAlgorithm.RS256, AS.claims(endpoint(), c -> {
+                .getKeyID()), JWSAlgorithm.RS256, AS.claims(RESOURCE, c -> {
                 })));
-        tokens.put("alg none", new PlainJWT(AS.claims(endpoint(), c -> {
+        tokens.put("alg none", new PlainJWT(AS.claims(RESOURCE, c -> {
         })).serialize());
         tokens.put("HS256 with the public key", hmacWithPublicKey());
         tokens.put("malformed", "not-a-jwt");
@@ -138,7 +145,7 @@ class ProtectedMcpServerIT {
 
     @Test
     void validTokenAdmitsTheCallerWithItsRoles() {
-        String token = AS.token(endpoint());
+        String token = AS.token(RESOURCE);
         HttpResponse<String> list = post("mcp", "tools/list", "", null, "Bearer " + token);
         record("valid token, tools/list", list);
         assertEquals(200, list.statusCode(), list::body);
@@ -155,7 +162,7 @@ class ProtectedMcpServerIT {
         assertEquals(List.of("Bearer error=\"insufficient_scope\", resource_metadata=\"" + metadataUrl() + "\""),
                 forbidden.headers().allValues("WWW-Authenticate"));
 
-        String admin = AS.token(endpoint(), c -> c.claim("groups", List.of("admin")));
+        String admin = AS.token(RESOURCE, c -> c.claim("groups", List.of("admin")));
         assertEquals(Set.of("everyone", "admins"), names(post("mcp", "tools/list", "", null,
                 "Bearer " + admin), "tools"));
         assertEquals("admins", text(callTool("mcp", "admins", "Bearer " + admin)));
@@ -165,10 +172,10 @@ class ProtectedMcpServerIT {
     @Test
     void rotatedKeysAreFetched() {
         RSAKey rotated = FakeAuthorizationServer.rsa("it-rotated");
-        assertEquals(200, post("mcp", "tools/list", "", null, "Bearer " + AS.token(endpoint())).statusCode());
+        assertEquals(200, post("mcp", "tools/list", "", null, "Bearer " + AS.token(RESOURCE)).statusCode());
         AS.publish(rotated, AS.key);
         HttpResponse<String> response = post("mcp", "tools/list", "", null, "Bearer "
-                + FakeAuthorizationServer.sign(rotated, JWSAlgorithm.RS256, AS.claims(endpoint(), c -> {
+                + FakeAuthorizationServer.sign(rotated, JWSAlgorithm.RS256, AS.claims(RESOURCE, c -> {
                 })));
         record("token signed with a rotated key", response);
         assertEquals(200, response.statusCode(), response::body);
@@ -176,13 +183,14 @@ class ProtectedMcpServerIT {
 
     @Test
     void protectedResourceMetadataIsServedToAnyone() {
-        HttpResponse<String> response = send(HttpRequest.newBuilder(URI.create(metadataUrl())).GET()
+        HttpResponse<String> response = send(HttpRequest.newBuilder(URI.create(endpoint()
+                + "/.well-known/oauth-protected-resource")).GET()
                 .header("Origin", "https://evil.example.com"), null);
         record("metadata", response);
         assertEquals(200, response.statusCode(), response::body);
         assertTrue(response.headers().firstValue("Content-Type").orElse("").startsWith("application/json"));
         Map<String, Object> metadata = json(response.body());
-        assertEquals(Map.of("resource", endpoint(), "authorization_servers", List.of(AS.issuer()),
+        assertEquals(Map.of("resource", RESOURCE, "authorization_servers", List.of(AS.issuer()),
                 "bearer_methods_supported", List.of("header")), metadata);
         assertEquals(404, send(HttpRequest.newBuilder(URI.create(base + "open/.well-known/oauth-protected-resource"))
                 .GET(), null).statusCode());
@@ -194,6 +202,7 @@ class ProtectedMcpServerIT {
         record("open server, anonymous tools/list", list);
         assertEquals(200, list.statusCode(), list::body);
         assertEquals(Set.of("free"), names(list, "tools"));
+        assertEquals("private", result(list).get("cacheScope"), "the admin Tool is restricted to a role");
         assertEquals("anonymous", text(callTool("open", "free", null)));
         HttpResponse<String> forbidden = callTool("open", "admin", null);
         assertEquals(403, forbidden.statusCode(), forbidden::body);
@@ -217,7 +226,7 @@ class ProtectedMcpServerIT {
     void apiIsUntouched() {
         HttpResponse<String> anonymous = send(HttpRequest.newBuilder(URI.create(base + "api/hello")).GET(), null);
         HttpResponse<String> withToken = send(HttpRequest.newBuilder(URI.create(base + "api/hello")).GET(),
-                "Bearer " + AS.token(endpoint()));
+                "Bearer " + AS.token(RESOURCE));
         FINDINGS.record("/api", "anonymous " + anonymous.statusCode() + " '" + anonymous.body().strip()
                 + "', with MCP token " + withToken.statusCode() + " '" + withToken.body().strip() + "'");
         assertEquals(200, anonymous.statusCode(), anonymous::body);
@@ -229,7 +238,7 @@ class ProtectedMcpServerIT {
     private String hmacWithPublicKey() {
         try {
             return FakeAuthorizationServer.sign(new JWSHeader.Builder(JWSAlgorithm.HS256).keyID(AS.key.getKeyID())
-                    .build(), new MACSigner(AS.key.toRSAPublicKey().getEncoded()), AS.claims(endpoint(), c -> {
+                    .build(), new MACSigner(AS.key.toRSAPublicKey().getEncoded()), AS.claims(RESOURCE, c -> {
                     }));
         } catch (JOSEException e) {
             throw new IllegalStateException(e);

@@ -23,7 +23,6 @@ import com.nimbusds.jose.proc.JOSEObjectTypeVerifier;
 import com.nimbusds.jose.proc.JWSKeySelector;
 import com.nimbusds.jose.proc.JWSVerificationKeySelector;
 import com.nimbusds.jose.proc.SecurityContext;
-import com.nimbusds.jose.util.DefaultResourceRetriever;
 import com.nimbusds.jose.util.ResourceRetriever;
 import com.nimbusds.jwt.JWTClaimNames;
 import com.nimbusds.jwt.JWTClaimsSet;
@@ -35,7 +34,8 @@ import com.nimbusds.jwt.proc.DefaultJWTProcessor;
  * <ul>
  * <li>keys come from a {@link JWKSourceBuilder} source with caching, refresh-ahead, rate limiting, one retry and
  * outage tolerance; a token with an unknown {@code kid} makes it refresh the JWK set (subject to rate limiting),
- * which picks up rotated keys;</li>
+ * which picks up rotated keys; the keys, and the issuer's metadata if the JWK set URL isn't configured, are
+ * retrieved with bounded timeouts and size and without following redirects;</li>
  * <li>a {@link DefaultJWTProcessor} accepts only JWS tokens signed with {@link #ALGORITHMS} (no {@code none}, no
  * HMAC, no JWE), with a {@code typ} of {@code at+jwt}, {@code JWT} or none;</li>
  * <li>a {@link DefaultJWTClaimsVerifier} requires {@code iss} to equal the issuer, {@code aud} to contain the
@@ -46,11 +46,11 @@ import com.nimbusds.jwt.proc.DefaultJWTProcessor;
 final class TokenValidator implements Closeable {
 
     /**
-     * The accepted signature algorithms: asymmetric only.
+     * The accepted signature algorithms: RSA and ECDSA only.
      */
     static final Set<JWSAlgorithm> ALGORITHMS = Set.of(JWSAlgorithm.RS256, JWSAlgorithm.RS384, JWSAlgorithm.RS512,
             JWSAlgorithm.PS256, JWSAlgorithm.PS384, JWSAlgorithm.PS512, JWSAlgorithm.ES256, JWSAlgorithm.ES384,
-            JWSAlgorithm.ES512, JWSAlgorithm.EdDSA);
+            JWSAlgorithm.ES512);
 
     private static final JOSEObjectTypeVerifier<SecurityContext> TYPES = new DefaultJOSEObjectTypeVerifier<>(
             new JOSEObjectType("at+jwt"), JOSEObjectType.JWT, null);
@@ -82,7 +82,7 @@ final class TokenValidator implements Closeable {
     TokenValidator(Protection protection, Tuning tuning) {
         this.protection = protection;
         int timeout = (int) tuning.httpTimeout().toMillis();
-        ResourceRetriever retriever = new DefaultResourceRetriever(timeout, timeout, tuning.sizeLimit());
+        ResourceRetriever retriever = new NoRedirectResourceRetriever(timeout, timeout, tuning.sizeLimit());
         JWKSetSource<SecurityContext> source;
         if (protection.jwksUri() != null) {
             try {
@@ -91,8 +91,7 @@ final class TokenValidator implements Closeable {
                 throw new IllegalArgumentException(e);
             }
         } else {
-            source = new IssuerJwkSetSource(protection.issuer(), retriever, tuning.httpTimeout(),
-                    tuning.sizeLimit());
+            source = new IssuerJwkSetSource(protection.issuer(), retriever);
         }
         ExecutorService refresher = Executors.newSingleThreadExecutor(runnable -> {
             Thread thread = new Thread(runnable, "crema-jwks-refresh-" + protection.server());
