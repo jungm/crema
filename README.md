@@ -5,6 +5,8 @@
   </picture>
 </h1>
 
+<h3 align="center"><em>Finally, an AI integration that runs on the app server your architect picked in 2011.</em></h3>
+
 <p align="center">An MCP server implementation for Jakarta EE.</p>
 
 ## What it is
