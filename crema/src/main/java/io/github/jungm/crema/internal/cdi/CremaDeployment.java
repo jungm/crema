@@ -129,10 +129,25 @@ public final class CremaDeployment {
      * Forgets everything, for tests.
      */
     static synchronized void reset() {
-        shutdown();
+        stop();
         catalog = null;
         applications = null;
         owner = null;
+    }
+
+    /**
+     * Stops serving MCP for good, when the web application stops: releases what the MCP Servers hold and Crema's
+     * {@code Jsonb}.
+     */
+    static synchronized void stop() {
+        shutdown();
+        if (catalog != null) {
+            try {
+                catalog.mapping().close();
+            } catch (RuntimeException e) {
+                LOG.log(Level.FINE, "Couldn't close Crema's Jsonb", e);
+            }
+        }
     }
 
     /**
@@ -176,7 +191,7 @@ public final class CremaDeployment {
 
         @Override
         public void contextDestroyed(ServletContextEvent event) {
-            shutdown();
+            stop();
         }
     }
 

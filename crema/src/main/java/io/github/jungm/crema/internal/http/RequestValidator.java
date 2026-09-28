@@ -8,10 +8,9 @@ import java.util.Base64;
 import java.util.List;
 import java.util.NoSuchElementException;
 import java.util.Optional;
-import java.util.Set;
 
-import io.github.jungm.crema.internal.protocol.Dispatcher;
 import io.github.jungm.crema.internal.json.Json;
+import io.github.jungm.crema.internal.protocol.Dispatcher;
 import io.github.jungm.crema.internal.protocol.Mcp;
 import io.github.jungm.crema.internal.protocol.McpError;
 import io.github.jungm.crema.internal.protocol.Rejection;
@@ -43,7 +42,6 @@ final class RequestValidator {
     static final String METHOD_HEADER = "Mcp-Method";
     static final String NAME_HEADER = "Mcp-Name";
 
-    private static final Set<String> NAMED_METHODS = Set.of("tools/call", "resources/read", "prompts/get");
     private static final String SENTINEL_PREFIX = "=?base64?";
     private static final String SENTINEL_SUFFIX = "?=";
 
@@ -84,7 +82,8 @@ final class RequestValidator {
         try {
             String protocolVersionHeader = header(headers, PROTOCOL_VERSION_HEADER, methodName);
             String methodHeader = header(headers, METHOD_HEADER, methodName);
-            String nameHeader = NAMED_METHODS.contains(methodName) ? header(headers, NAME_HEADER, methodName) : null;
+            Optional<String> nameParam = Mcp.nameParam(methodName);
+            String nameHeader = nameParam.isPresent() ? header(headers, NAME_HEADER, methodName) : null;
 
             if (!(message.get("params") instanceof JsonObject params)) {
                 throw missingMeta("params");
@@ -102,8 +101,7 @@ final class RequestValidator {
             match(PROTOCOL_VERSION_HEADER, protocolVersionHeader, protocolVersion.getString());
             match(METHOD_HEADER, methodHeader, methodName);
             if (nameHeader != null) {
-                String key = methodName.equals("resources/read") ? "uri" : "name";
-                if (params.get(key) instanceof JsonString bodyName) {
+                if (params.get(nameParam.get()) instanceof JsonString bodyName) {
                     match(NAME_HEADER, nameHeader, bodyName.getString());
                 }
             }

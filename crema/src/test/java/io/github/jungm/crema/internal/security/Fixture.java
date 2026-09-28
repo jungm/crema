@@ -11,7 +11,6 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.concurrent.CompletableFuture;
@@ -27,23 +26,14 @@ import org.mcpjava.server.tools.Tool;
 
 import io.github.jungm.crema.McpCaller;
 import io.github.jungm.crema.McpServerInfo;
-import io.github.jungm.crema.internal.config.ConfigLookup;
-import io.github.jungm.crema.internal.config.CremaSettings;
-import io.github.jungm.crema.internal.config.ServerSettings;
+import io.github.jungm.crema.internal.TestDeployment;
 import io.github.jungm.crema.internal.http.Headers;
 import io.github.jungm.crema.internal.http.HttpReply;
 import io.github.jungm.crema.internal.http.HttpRequest;
 import io.github.jungm.crema.internal.http.McpTransport;
-import io.github.jungm.crema.internal.invoke.ContentEncoders;
-import io.github.jungm.crema.internal.invoke.Mapping;
-import io.github.jungm.crema.internal.model.FeatureScanner;
-import io.github.jungm.crema.internal.model.IconLookup;
-import io.github.jungm.crema.internal.model.Scanning;
+import io.github.jungm.crema.internal.json.Json;
 import io.github.jungm.crema.internal.model.McpServerModel;
 import io.github.jungm.crema.internal.model.ServerRegistry;
-import io.github.jungm.crema.internal.protocol.Dispatcher;
-import io.github.jungm.crema.internal.json.Json;
-import io.github.jungm.crema.internal.protocol.Services;
 import io.github.jungm.crema.testkit.FakeAuthorizationServer;
 import jakarta.annotation.security.DenyAll;
 import jakarta.annotation.security.PermitAll;
@@ -64,8 +54,6 @@ final class Fixture {
 
     static final TokenValidator.Tuning FAST = new TokenValidator.Tuning(Duration.ofMillis(1000),
             Duration.ofMillis(200), Duration.ofMillis(100), Duration.ofMillis(300), Duration.ofSeconds(2), 50_000);
-
-    private static final Mapping MAPPING = Mapping.create();
 
     @RolesAllowed("user")
     static class ProtectedApp {
@@ -222,29 +210,20 @@ final class Fixture {
     final McpServerModel plainServer;
 
     Fixture(Protection defaultProtection, Protection otherProtection) {
-        FeatureScanner scanner = new FeatureScanner(MAPPING, IconLookup.reflective());
-        Scanning.scan(scanner, Features.class, new Features());
-        Scanning.scan(scanner, AdminFeatures.class, new AdminFeatures());
-        Scanning.scan(scanner, OtherFeatures.class, new OtherFeatures());
-        Scanning.scan(scanner, OpenFeatures.class, new OpenFeatures());
-        Scanning.scan(scanner, PlainFeatures.class, new PlainFeatures());
-        assertEquals(List.of(), scanner.problems());
-        List<ServerRegistry.Declaration> declarations = new ArrayList<>();
-        for (Class<?> app : List.of(ProtectedApp.class, OtherApp.class, OpenApp.class, PlainApp.class)) {
-            declarations.add(new ServerRegistry.Declaration(app, ServerSettings.resolve(
-                    app.getAnnotation(McpServerInfo.class), ConfigLookup.none(), Optional::empty), List.of()));
-        }
-        ServerRegistry.Result registry = ServerRegistry.build(declarations, scanner.features(),
-                CremaSettings.defaults());
-        assertEquals(List.of(), registry.problems());
+        TestDeployment deployment = TestDeployment.create()
+                .application(ProtectedApp.class).application(OtherApp.class).application(OpenApp.class)
+                .application(PlainApp.class)
+                .bean(Features.class, new Features()).bean(AdminFeatures.class, new AdminFeatures())
+                .bean(OtherFeatures.class, new OtherFeatures()).bean(OpenFeatures.class, new OpenFeatures())
+                .bean(PlainFeatures.class, new PlainFeatures());
+        ServerRegistry registry = deployment.registry();
         Map<Class<?>, Protection> protections = new HashMap<>();
         protections.put(ProtectedApp.class, defaultProtection);
         protections.put(OtherApp.class, otherProtection);
-        CremaAccessPolicy.Result result = CremaAccessPolicy.create(registry.registry().servers(), protections, FAST);
+        CremaAccessPolicy.Result result = CremaAccessPolicy.create(registry.servers(), protections, FAST);
         assertEquals(List.of(), result.problems());
         policy = result.policy();
-        transport = new McpTransport(registry.registry(),
-                new Dispatcher(new Services(MAPPING, new ContentEncoders(List::of), policy)));
+        transport = new McpTransport(registry, deployment.dispatcher(policy));
         protectedServer = transport.server(ProtectedApp.class).orElseThrow();
         otherServer = transport.server(OtherApp.class).orElseThrow();
         openServer = transport.server(OpenApp.class).orElseThrow();

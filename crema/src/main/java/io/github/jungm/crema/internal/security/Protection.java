@@ -8,6 +8,7 @@ import java.util.Optional;
 import java.util.logging.Logger;
 
 import io.github.jungm.crema.internal.config.ConfigLookup;
+import io.github.jungm.crema.internal.config.ConfigValues;
 import io.github.jungm.crema.internal.config.ServerSettings;
 
 /**
@@ -84,16 +85,12 @@ public record Protection(String server, String issuer, URI jwksUri, String resou
         }
         int clockSkew = config.get(prefix + CLOCK_SKEW_SECONDS).map(value -> {
             try {
-                int seconds = Integer.parseInt(value.trim());
-                if (seconds >= 0) {
-                    return seconds;
-                }
-            } catch (NumberFormatException e) {
-                // reported below
+                return (int) Math.min(Integer.MAX_VALUE,
+                        ConfigValues.integer(prefix + CLOCK_SKEW_SECONDS, value, 0, "seconds"));
+            } catch (IllegalArgumentException e) {
+                problems.add(where + ": " + e.getMessage());
+                return DEFAULT_CLOCK_SKEW_SECONDS;
             }
-            problems.add(where + ": " + prefix + CLOCK_SKEW_SECONDS + " must be an integer number of seconds >= 0, "
-                    + "but is '" + value + "'");
-            return DEFAULT_CLOCK_SKEW_SECONDS;
         }).orElse(DEFAULT_CLOCK_SKEW_SECONDS);
         if (problems.size() > before) {
             return Optional.empty();
