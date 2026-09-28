@@ -86,6 +86,18 @@ class SettingsTest {
                 "crema.cache.list-ttl-ms", "0")));
         assertEquals(List.of("https://a.example.com", "https://b.example.com"), settings.allowedOrigins());
         assertEquals(0, settings.listTtlMs());
+        assertEquals(4194304, settings.maxRequestBytes());
+        assertEquals(1024, CremaSettings.resolve(ConfigLookup.of(Map.of("crema.max-request-bytes", " 1024")))
+                .maxRequestBytes());
+    }
+
+    @Test
+    void invalidMaxRequestBytesFails() {
+        for (String value : List.of("0", "-1", "lots")) {
+            IllegalArgumentException e = assertThrows(IllegalArgumentException.class,
+                    () -> CremaSettings.resolve(ConfigLookup.of(Map.of("crema.max-request-bytes", value))));
+            assertTrue(e.getMessage().contains("crema.max-request-bytes"), e.getMessage());
+        }
     }
 
     @Test

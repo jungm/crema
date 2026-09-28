@@ -1,5 +1,7 @@
 package io.github.jungm.crema.internal.http;
 
+import java.io.IOException;
+import java.io.InputStream;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -116,6 +118,31 @@ public final class McpTransport {
     }
 
     /**
+     * Reads a {@code POST} body of at most {@code crema.max-request-bytes} and validates it with its headers. A
+     * larger body, by {@code Content-Length} or while reading, is answered with {@code 413} and a JSON-RPC
+     * {@code -32600} error without {@code id}.
+     *
+     * @param contentLength the {@code Content-Length}, or {@code -1} if unknown
+     */
+    public Plan plan(McpServerModel server, InputStream body, long contentLength,
+            Function<String, List<String>> headers, Caller caller) throws IOException {
+        long max = registry.settings().maxRequestBytes();
+        if (contentLength > max) {
+            return new Reply(tooLarge(max));
+        }
+        byte[] bytes = body.readNBytes((int) Math.min(max + 1, Integer.MAX_VALUE - 8));
+        if (bytes.length > max) {
+            return new Reply(tooLarge(max));
+        }
+        return plan(server, bytes, headers, caller);
+    }
+
+    private static HttpReply tooLarge(long max) {
+        return HttpReply.json(413, Json.write(Dispatcher.error(null, new McpError(McpError.INVALID_REQUEST,
+                "Request body exceeds " + max + " bytes", null, 413)).message()));
+    }
+
+    /**
      * Validates a {@code POST} body and its headers.
      *
      * @param headers the values of a request header by case-insensitive name
@@ -144,6 +171,8 @@ public final class McpTransport {
             return reply(dispatcher.handle(server, request, caller, ProgressChannel.NONE));
         } catch (RejectedException e) {
             return reply(e.rejection());
+        } catch (RuntimeException | Error e) {
+            return reply(internalError(request, e));
         }
     }
 
@@ -153,13 +182,29 @@ public final class McpTransport {
      */
     public void stream(McpServerModel server, Request request, Caller caller, EventStream events) {
         StreamChannel channel = new StreamChannel(events);
-        JsonObject response;
+        JsonObject response = null;
         try {
             response = dispatcher.handle(server, request, caller, channel).message();
         } catch (RejectedException e) {
             response = Dispatcher.error(request.id(), McpError.internal("Forbidden")).message();
+        } catch (RuntimeException | Error e) {
+            response = internalError(request, e).message();
+        } finally {
+            channel.finish(response != null ? response
+                    : Dispatcher.error(request.id(), McpError.internal("Internal error")).message());
         }
-        channel.finish(response);
+    }
+
+    /**
+     * The last resort for a failure that escaped the {@link Dispatcher}; the Runtime must never see it, since it
+     * would answer with a stack trace or leave an SSE stream open. A {@link VirtualMachineError} is rethrown.
+     */
+    private static Dispatcher.Response internalError(Request request, Throwable failure) {
+        if (failure instanceof VirtualMachineError error) {
+            throw error;
+        }
+        LOG.log(Level.WARNING, "Handling " + request.method() + " failed", failure);
+        return Dispatcher.error(request.id(), McpError.internal("Internal error"));
     }
 
     /**

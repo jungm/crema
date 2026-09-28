@@ -2,11 +2,13 @@ package io.github.jungm.crema.internal.http;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 
 import org.junit.jupiter.api.Test;
@@ -80,5 +82,32 @@ class CremaInitializerTest {
         assertEquals(Map.of(McpApplication.APPLICATION_PROPERTY, Plain.class), application.getProperties());
         assertEquals(Set.of(McpEndpoint.class, McpEndpointFilter.class, ResourceMetadataEndpoint.class),
                 application.getClasses());
+    }
+
+    @jakarta.ws.rs.ApplicationPath("mcp/admin/")
+    static class Nested extends McpApplication {
+    }
+
+    @jakarta.ws.rs.ApplicationPath("/")
+    static class Root extends McpApplication {
+    }
+
+    @jakarta.ws.rs.ApplicationPath("/api/*")
+    static class Wildcard extends McpApplication {
+    }
+
+    @Test
+    void responsesAreMadeFinalOnTheApplicationPath() {
+        assertEquals(Optional.of("/mcp/admin/*"), CremaInitializer.urlPattern(Nested.class));
+        assertEquals(Optional.of("/*"), CremaInitializer.urlPattern(Root.class));
+        assertEquals(Optional.of("/api/*"), CremaInitializer.urlPattern(Wildcard.class));
+        assertEquals(Optional.empty(), CremaInitializer.urlPattern(Plain.class));
+    }
+
+    @Test
+    void deploymentFailureStopsTheWebApplication() {
+        IllegalStateException e = assertThrows(IllegalStateException.class,
+                () -> new CremaInitializer.DeploymentFailure("Invalid MCP Servers").contextInitialized(null));
+        assertEquals("Invalid MCP Servers", e.getMessage());
     }
 }

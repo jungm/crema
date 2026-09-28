@@ -69,6 +69,19 @@ class JsonbBridgeTest {
         assertEquals(reference.toJson(value), bridge.toJson(value));
     }
 
+    public record Amount(BigDecimal value, BigInteger count, List<BigDecimal> parts) {
+    }
+
+    @Test
+    void bigNumbersInsideObjectsAreJsonNumbers() {
+        JsonValue expected = Json.createObjectBuilder().add("count", new BigInteger("12345678901234567890"))
+                .add("parts", Json.createArrayBuilder().add(new BigDecimal("0.1")))
+                .add("value", new BigDecimal("1.50")).build();
+
+        assertEquals(expected, bridge.toJsonValue(new Amount(new BigDecimal("1.50"),
+                new BigInteger("12345678901234567890"), List.of(new BigDecimal("0.1")))));
+    }
+
     @Test
     void toJsonValueOfNullAndJsonValues() {
         assertSame(JsonValue.NULL, bridge.toJsonValue(null));
