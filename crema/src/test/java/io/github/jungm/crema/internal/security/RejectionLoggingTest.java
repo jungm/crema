@@ -26,6 +26,7 @@ import com.nimbusds.jose.JWSHeader;
 import com.nimbusds.jose.jwk.RSAKey;
 
 import io.github.jungm.crema.internal.security.Fixture.RequestCaller;
+import io.github.jungm.crema.testkit.FakeAuthorizationServer;
 
 /**
  * What rejecting tokens logs: unauthenticated clients can trigger it at will, so it must neither flood the log nor
@@ -35,7 +36,7 @@ class RejectionLoggingTest {
 
     private static final Logger LOGGER = Logger.getLogger(CremaAccessPolicy.class.getName());
 
-    private final FakeAuthorizationServer as = new FakeAuthorizationServer();
+    private final FakeAuthorizationServer as = FakeAuthorizationServer.start();
     private final List<LogRecord> records = new CopyOnWriteArrayList<>();
     private final Handler handler = new Handler() {
         @Override
@@ -125,8 +126,8 @@ class RejectionLoggingTest {
     void controlCharactersFromTheTokenAreStripped() {
         fixture();
         assertEquals(401, status(FakeAuthorizationServer.sign(new JWSHeader.Builder(JWSAlgorithm.RS256)
-                .keyID(as.rsa.getKeyID()).type(new JOSEObjectType("x\r\nSEVERE: forged line")).build(),
-                FakeAuthorizationServer.rsaSigner(as.rsa), as.claims(ENDPOINT, c -> {
+                .keyID(as.rsaKey().getKeyID()).type(new JOSEObjectType("x\r\nSEVERE: forged line")).build(),
+                FakeAuthorizationServer.rsaSigner(as.rsaKey()), as.claims(ENDPOINT, c -> {
                 }))));
         LogRecord rejection = records.stream().filter(r -> r.getMessage().contains("forged")).findFirst()
                 .orElseThrow();

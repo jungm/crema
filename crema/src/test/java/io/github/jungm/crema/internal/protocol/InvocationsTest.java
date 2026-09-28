@@ -28,8 +28,8 @@ import io.github.jungm.crema.internal.model.IconLookup;
 import io.github.jungm.crema.internal.model.McpServerModel;
 import io.github.jungm.crema.internal.model.Scanning;
 import io.github.jungm.crema.internal.model.ServerRegistry;
-import io.github.jungm.crema.internal.security.AccessPolicy;
 import io.github.jungm.crema.internal.security.Caller;
+import io.github.jungm.crema.internal.security.CremaAccessPolicy;
 import jakarta.json.JsonObject;
 import jakarta.json.JsonValue;
 
@@ -101,8 +101,6 @@ class InvocationsTest {
     }
 
     private static final Mapping MAPPING = Mapping.create();
-    private static final Dispatcher DISPATCHER = new Dispatcher(
-            new Services(MAPPING, ContentEncoders.NONE, AccessPolicy.PERMIT_ALL));
     private static final McpServerModel SERVER = server(Features.class, new Features());
 
     @Test
@@ -191,7 +189,9 @@ class InvocationsTest {
         JsonObject meta = Json.object().add("io.modelcontextprotocol/protocolVersion", Dispatcher.PROTOCOL_VERSION)
                 .add("io.modelcontextprotocol/clientCapabilities", Json.object()).build();
         Request request = new Request(Json.PROVIDER.createValue(1), method, params.add("_meta", meta).build());
-        return DISPATCHER.handle(server, request, Caller.ANONYMOUS, ProgressChannel.NONE).message();
+        Dispatcher dispatcher = new Dispatcher(new Services(MAPPING, ContentEncoders.NONE,
+                CremaAccessPolicy.create(List.of(server), java.util.Map.of()).policy()));
+        return dispatcher.handle(server, request, Caller.ANONYMOUS, ProgressChannel.NONE).message();
     }
 
     static JsonObject result(JsonObject message) {

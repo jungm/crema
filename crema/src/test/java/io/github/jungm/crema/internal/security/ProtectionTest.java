@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.net.URI;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -206,11 +207,13 @@ class ProtectionTest {
 
     @Test
     void loopbackHosts() {
-        for (String host : List.of("localhost", "LOCALHOST", "127.0.0.1", "127.1.2.3", "[::1]")) {
-            assertTrue(Protection.isLoopback(host), host);
+        for (String host : List.of("localhost", "LOCALHOST", "127.0.0.1", "127.1.2.3", "127.255.255.255", "[::1]",
+                "::1")) {
+            assertTrue(Loopback.isHost(host), host);
         }
-        for (String host : List.of("localhost.example.com", "128.0.0.1", "[::2]", "10.0.0.1")) {
-            assertEquals(false, Protection.isLoopback(host), host);
+        for (String host : Arrays.asList("localhost.example.com", "128.0.0.1", "[::2]", "10.0.0.1", "127.0.0.1.nip.io",
+                "127.0.0.256", "127.0.0", "127..0.1", "127.0.0.-1", "0127.0.0.1", "", null)) {
+            assertEquals(false, Loopback.isHost(host), host);
         }
     }
 }

@@ -25,6 +25,7 @@ import com.nimbusds.jwt.PlainJWT;
 
 import io.github.jungm.crema.internal.security.Fixture.Exchange;
 import io.github.jungm.crema.internal.security.Fixture.RequestCaller;
+import io.github.jungm.crema.testkit.FakeAuthorizationServer;
 
 /**
  * Bearer token validation on a protected MCP Server, against a fake Authorization Server.
@@ -36,7 +37,7 @@ class BearerTokenTest {
     private static final String INVALID_TOKEN = "Bearer error=\"invalid_token\", resource_metadata=\"" + METADATA
             + "\"";
 
-    private final FakeAuthorizationServer as = new FakeAuthorizationServer();
+    private final FakeAuthorizationServer as = FakeAuthorizationServer.start();
     private Fixture fixture;
 
     @AfterEach
@@ -121,6 +122,19 @@ class BearerTokenTest {
                 RequestCaller.withAuthorization("Bearer " + as.token(ENDPOINT), "Bearer x"), "whoami");
         assertEquals(401, twice.status());
         assertEquals(INVALID_TOKEN, twice.challenge());
+    }
+
+    @Test
+    void tokensOutsideTheB64tokenSyntaxAreInvalid() {
+        fixture(false);
+        String token = as.token(ENDPOINT);
+        assertEquals(INVALID_TOKEN, whoami("Bearer " + token + " " + token).challenge(), "two tokens");
+        assertEquals(INVALID_TOKEN, whoami("Bearer " + token + "\tx").challenge(), "a tab inside the token");
+        assertEquals(200, whoami("Bearer " + token + "\t").status(), "surrounding whitespace isn't part of it");
+        assertEquals(INVALID_TOKEN, whoami("Bearer " + token + ", Bearer " + token).challenge(),
+                "two Authorization headers joined by the Runtime");
+        assertEquals(INVALID_TOKEN, whoami("Bearer " + token.replace('.', '!')).challenge());
+        assertEquals(INVALID_TOKEN, whoami("Bearer \"" + token + "\"").challenge());
     }
 
     @Test
@@ -211,16 +225,16 @@ class BearerTokenTest {
     @Test
     void hmacWithThePublicKeyAsSecretIsInvalid() throws JOSEException {
         fixture(false);
-        byte[] publicKey = as.rsa.toRSAPublicKey().getEncoded();
+        byte[] publicKey = as.rsaKey().toRSAPublicKey().getEncoded();
         assertInvalid(FakeAuthorizationServer.sign(new JWSHeader.Builder(JWSAlgorithm.HS256)
-                .keyID(as.rsa.getKeyID()).build(), new MACSigner(publicKey), as.claims(ENDPOINT, c -> {
+                .keyID(as.rsaKey().getKeyID()).build(), new MACSigner(publicKey), as.claims(ENDPOINT, c -> {
                 })));
     }
 
     @Test
     void signatureByAnUnknownKeyWithAKnownKidIsInvalid() {
         fixture(false);
-        RSAKey impostor = FakeAuthorizationServer.rsa(as.rsa.getKeyID());
+        RSAKey impostor = FakeAuthorizationServer.rsa(as.rsaKey().getKeyID());
         assertInvalid(FakeAuthorizationServer.sign(new JWSHeader.Builder(JWSAlgorithm.RS256)
                 .keyID(impostor.getKeyID()).build(), FakeAuthorizationServer.rsaSigner(impostor),
                 as.claims(ENDPOINT, c -> {
@@ -233,10 +247,10 @@ class BearerTokenTest {
         JWTClaimsSet claims = as.claims(ENDPOINT, c -> {
         });
         assertEquals(200, whoamiWithToken(FakeAuthorizationServer.sign(new JWSHeader.Builder(JWSAlgorithm.ES256)
-                .keyID(as.ec.getKeyID()).build(), FakeAuthorizationServer.ecSigner(as.ec), claims)).status());
+                .keyID(as.ecKey().getKeyID()).build(), FakeAuthorizationServer.ecSigner(as.ecKey()), claims)).status());
         assertEquals(200, whoamiWithToken(FakeAuthorizationServer.sign(new JWSHeader.Builder(JWSAlgorithm.PS256)
-                .keyID(as.rsa.getKeyID()).type(JOSEObjectType.JWT).build(),
-                FakeAuthorizationServer.rsaSigner(as.rsa), claims)).status());
+                .keyID(as.rsaKey().getKeyID()).type(JOSEObjectType.JWT).build(),
+                FakeAuthorizationServer.rsaSigner(as.rsaKey()), claims)).status());
     }
 
     @Test
@@ -260,10 +274,10 @@ class BearerTokenTest {
         JWTClaimsSet claims = as.claims(ENDPOINT, c -> {
         });
         assertEquals(200, whoamiWithToken(FakeAuthorizationServer.sign(new JWSHeader.Builder(JWSAlgorithm.RS256)
-                .keyID(as.rsa.getKeyID()).build(), FakeAuthorizationServer.rsaSigner(as.rsa), claims)).status());
+                .keyID(as.rsaKey().getKeyID()).build(), FakeAuthorizationServer.rsaSigner(as.rsaKey()), claims)).status());
         assertInvalid(FakeAuthorizationServer.sign(new JWSHeader.Builder(JWSAlgorithm.RS256)
-                .keyID(as.rsa.getKeyID()).type(new JOSEObjectType("secevent+jwt")).build(),
-                FakeAuthorizationServer.rsaSigner(as.rsa), claims));
+                .keyID(as.rsaKey().getKeyID()).type(new JOSEObjectType("secevent+jwt")).build(),
+                FakeAuthorizationServer.rsaSigner(as.rsaKey()), claims));
     }
 
     @Test
@@ -278,7 +292,7 @@ class BearerTokenTest {
         assertEquals(200, whoamiWithToken(as.token(ENDPOINT)).status());
         int before = as.jwksRequests();
         RSAKey rotated = FakeAuthorizationServer.rsa("rsa-2");
-        as.publish(rotated, as.rsa);
+        as.publish(rotated, as.rsaKey());
         String token = FakeAuthorizationServer.sign(new JWSHeader.Builder(JWSAlgorithm.RS256)
                 .keyID(rotated.getKeyID()).build(), FakeAuthorizationServer.rsaSigner(rotated),
                 as.claims(ENDPOINT, c -> {
@@ -289,6 +303,11 @@ class BearerTokenTest {
         assertEquals(before + 1, as.jwksRequests(), "the rotated keys are cached");
     }
 
+    /**
+     * Waits for the key cache to expire for real: Nimbus' {@code JWKSourceBuilder} has no clock to inject (its
+     * {@code JWKSetBasedJWKSource} reads {@code System.currentTimeMillis()}), so the tests use a short
+     * {@link Fixture#FAST} cache lifetime instead.
+     */
     @Test
     void cachedKeysOutliveAnOutageOfTheJwksEndpoint() throws InterruptedException {
         fixture(false);

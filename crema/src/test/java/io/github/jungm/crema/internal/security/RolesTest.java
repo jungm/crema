@@ -18,6 +18,7 @@ import io.github.jungm.crema.internal.http.HttpReply;
 import io.github.jungm.crema.internal.protocol.Json;
 import io.github.jungm.crema.internal.security.Fixture.Exchange;
 import io.github.jungm.crema.internal.security.Fixture.RequestCaller;
+import io.github.jungm.crema.testkit.FakeAuthorizationServer;
 
 /**
  * Role enforcement and list filtering on protected and open MCP Servers, and the Protected Resource Metadata.
@@ -27,7 +28,7 @@ class RolesTest {
     private static final String FORBIDDEN = "Bearer error=\"insufficient_scope\", resource_metadata=\"" + ENDPOINT
             + "/.well-known/oauth-protected-resource\"";
 
-    private final FakeAuthorizationServer as = new FakeAuthorizationServer();
+    private final FakeAuthorizationServer as = FakeAuthorizationServer.start();
     private Fixture fixture;
 
     @AfterEach
@@ -128,7 +129,8 @@ class RolesTest {
         Exchange user = fixture.listTools(fixture.protectedServer, user());
         assertEquals(Set.of("everyone", "users", "authenticated", "whoami", "methodLevel"), user.names("tools"));
         assertEquals("private", user.result().getString("cacheScope"));
-        assertEquals(Set.of("everyone", "users", "admins", "authenticated", "whoami", "classLevel", "methodLevel"),
+        assertEquals(Set.of("everyone", "users", "admins", "adminProgress", "authenticated", "whoami", "classLevel",
+                "methodLevel"),
                 fixture.listTools(fixture.protectedServer, withGroups("user", "admin")).names("tools"));
         assertEquals(Set.of(), fixture.call(fixture.protectedServer, user(), "prompts/list", "", null)
                 .names("prompts"));
@@ -204,27 +206,30 @@ class RolesTest {
     @Test
     void protectedResourceMetadata() {
         fixture("groups");
-        HttpReply metadata = fixture.transport.resourceMetadata(fixture.protectedServer);
+        HttpReply metadata = fixture.transport.resourceMetadata(fixture.protectedServer, "GET");
         assertEquals(200, metadata.status());
         assertEquals(Json.parse("{\"resource\":\"" + ENDPOINT + "\",\"authorization_servers\":[\"" + as.issuer()
                 + "\"],\"bearer_methods_supported\":[\"header\"]}"), Json.parse(metadata.body()));
-        assertEquals(404, fixture.transport.resourceMetadata(fixture.openServer).status());
+        HttpReply post = fixture.transport.resourceMetadata(fixture.protectedServer, "POST");
+        assertEquals(405, post.status());
+        assertEquals("GET", post.headers().get("Allow"));
+        assertEquals(404, fixture.transport.resourceMetadata(fixture.openServer, "GET").status());
     }
 
     @Test
-    void securitySchemeOfTheTokenCaller() {
+    void hiddenProgressToolIsForbiddenBeforeAnyStreamStarts() {
         fixture("groups");
-        Caller admitted = ((io.github.jungm.crema.internal.http.McpTransport.Admitted) fixture.transport
-                .screen(fixture.protectedServer, null, withGroups("user", "admin"))).caller();
-        jakarta.ws.rs.core.SecurityContext context = TokenSecurityContext.replacing(null, admitted).orElseThrow();
-        assertEquals("alice", context.getUserPrincipal().getName());
-        assertEquals(true, context.isUserInRole("admin"));
-        assertEquals(false, context.isUserInRole("other"));
-        assertEquals("Bearer", context.getAuthenticationScheme());
-        assertEquals(false, context.isSecure());
-        assertEquals(admitted, TokenSecurityContext.caller(context).orElseThrow());
-        assertEquals(true, TokenSecurityContext.replacing(null, RequestCaller.anonymous()).isEmpty());
-        assertEquals(new io.github.jungm.crema.internal.http.McpTransport.Admitted(admitted),
-                fixture.transport.screen(fixture.protectedServer, null, admitted), "admitted callers pass again");
+        String progressToken = ",\"progressToken\":\"p\"";
+        Exchange forbidden = fixture.call(fixture.protectedServer, user(), "tools/call",
+                ",\"name\":\"adminProgress\"", "adminProgress", progressToken);
+        assertEquals(403, forbidden.status());
+        assertEquals(false, forbidden.streamed());
+        assertEquals(FORBIDDEN, forbidden.challenge());
+        assertNull(forbidden.message());
+
+        Exchange streamed = fixture.call(fixture.protectedServer, withGroups("admin"), "tools/call",
+                ",\"name\":\"adminProgress\"", "adminProgress", progressToken);
+        assertEquals(true, streamed.streamed());
+        assertEquals("progress", streamed.text());
     }
 }

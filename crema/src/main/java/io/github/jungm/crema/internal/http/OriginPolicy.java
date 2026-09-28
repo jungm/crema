@@ -7,15 +7,15 @@ import java.util.Locale;
 import java.util.Set;
 import java.util.stream.Collectors;
 
+import io.github.jungm.crema.internal.security.Loopback;
+
 /**
  * Protects against DNS rebinding: a request without {@code Origin} passes, and a present {@code Origin} passes
- * only if it is a loopback origin ({@code http} or {@code https} with host {@code localhost}, {@code 127.0.0.1} or
- * {@code [::1]}, any port) or one of the allowed origins. An allowed origin {@code *} disables the check. The
- * {@code Host} header plays no part, since a rebinding attack controls it as well.
+ * only if it is a loopback origin ({@code http} or {@code https} with a {@link Loopback} host, any port) or one of
+ * the allowed origins. An allowed origin {@code *} disables the check. The {@code Host} header plays no part,
+ * since a rebinding attack controls it as well.
  */
-public final class OriginPolicy {
-
-    private static final Set<String> LOOPBACK_HOSTS = Set.of("localhost", "127.0.0.1", "[::1]");
+final class OriginPolicy {
 
     private final boolean any;
     private final Set<String> allowed;
@@ -23,7 +23,7 @@ public final class OriginPolicy {
     /**
      * @param allowed the configured origins, such as {@code https://app.example.com}
      */
-    public OriginPolicy(List<String> allowed) {
+    OriginPolicy(List<String> allowed) {
         this.any = allowed.contains("*");
         this.allowed = allowed.stream().map(OriginPolicy::normalize).collect(Collectors.toUnmodifiableSet());
     }
@@ -31,7 +31,7 @@ public final class OriginPolicy {
     /**
      * @param origin the {@code Origin} header, or {@code null}
      */
-    public boolean permits(String origin) {
+    boolean permits(String origin) {
         if (origin == null || any) {
             return true;
         }
@@ -43,8 +43,8 @@ public final class OriginPolicy {
         try {
             URI uri = new URI(origin);
             String scheme = uri.getScheme();
-            return ("http".equals(scheme) || "https".equals(scheme)) && uri.getHost() != null
-                    && LOOPBACK_HOSTS.contains(uri.getHost()) && uri.getRawUserInfo() == null
+            return ("http".equals(scheme) || "https".equals(scheme)) && Loopback.isHost(uri.getHost())
+                    && uri.getRawUserInfo() == null
                     && (uri.getRawPath() == null || uri.getRawPath().isEmpty()) && uri.getRawQuery() == null
                     && uri.getRawFragment() == null;
         } catch (URISyntaxException e) {

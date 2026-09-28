@@ -4,8 +4,6 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
 import java.util.function.Function;
-import java.util.logging.Level;
-import java.util.logging.Logger;
 
 import org.mcpjava.server.FeatureType;
 import org.mcpjava.server.McpException;
@@ -21,7 +19,6 @@ import io.github.jungm.crema.internal.invoke.ReturnConversion;
 import io.github.jungm.crema.internal.json.ProtocolJson;
 import io.github.jungm.crema.internal.model.Feature;
 import io.github.jungm.crema.internal.model.Param;
-import io.github.jungm.crema.internal.security.AccessPolicy.RejectedException;
 import jakarta.json.JsonObject;
 import jakarta.json.JsonObjectBuilder;
 import jakarta.json.JsonString;
@@ -32,8 +29,6 @@ import jakarta.json.JsonValue;
  * {@code prompts/get} and {@code completion/complete}.
  */
 final class Invocations {
-
-    private static final Logger LOG = Logger.getLogger(Invocations.class.getName());
 
     private Invocations() {
     }
@@ -73,10 +68,8 @@ final class Invocations {
             response = ToolResponse.ofError("Invalid arguments for tool " + name + ": " + e.getMessage());
         } catch (McpException e) {
             response = ToolResponse.ofError(e.getMessage() != null ? e.getMessage() : "Tool " + name + " failed");
-        } catch (VirtualMachineError e) {
-            throw e;
         } catch (Throwable e) {
-            LOG.log(Level.WARNING, "Tool " + name + " (" + tool.method() + ") failed", e);
+            Dispatcher.internalError("Tool " + name + " (" + tool.method() + ")", e);
             response = ToolResponse.ofError("Tool " + name + " failed with an internal error");
         }
         return ProtocolJson.toolResult(response, mapping.jsonb()::toJsonValue);
@@ -205,22 +198,19 @@ final class Invocations {
             throw e;
         } catch (McpException e) {
             throw McpError.internal(e.getMessage() != null ? e.getMessage() : "Internal error");
-        } catch (VirtualMachineError e) {
-            throw e;
         } catch (Throwable e) {
             throw internal(feature, e);
         }
     }
 
     private static McpError internal(Feature feature, Throwable e) {
-        LOG.log(Level.WARNING, feature.method() + " failed", e);
-        return McpError.internal("Internal error");
+        return Dispatcher.internalError(String.valueOf(feature.method()), e);
     }
 
     private static void checkAccess(Call call, Feature feature) {
         var access = call.services().access();
         if (!access.permits(call.server(), feature, call.caller())) {
-            throw new RejectedException(access.forbidden(call.server(), call.caller()));
+            throw access.forbidden(call.server());
         }
     }
 

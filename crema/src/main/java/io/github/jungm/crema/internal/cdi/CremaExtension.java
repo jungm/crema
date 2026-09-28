@@ -15,8 +15,6 @@ import io.github.jungm.crema.internal.invoke.ContentEncoders;
 import io.github.jungm.crema.internal.invoke.Mapping;
 import io.github.jungm.crema.internal.model.FeatureScanner;
 import io.github.jungm.crema.internal.model.IconLookup;
-import io.github.jungm.crema.internal.protocol.Services;
-import io.github.jungm.crema.internal.security.AccessPolicy;
 import jakarta.enterprise.context.spi.CreationalContext;
 import jakarta.enterprise.event.Observes;
 import jakarta.enterprise.inject.spi.AfterDeploymentValidation;
@@ -63,8 +61,8 @@ public class CremaExtension implements Extension {
                 .map(bean -> new ContentEncoders.Candidate(encodedType(bean),
                         new CdiInstanceSource(beanManager, bean)))
                 .toList();
-        Services services = new Services(mapping, new ContentEncoders(() -> candidates), AccessPolicy.PERMIT_ALL);
-        CremaDeployment.featuresDiscovered(new CremaDeployment.Catalog(scanner.features(), services, icons),
+        CremaDeployment.featuresDiscovered(new CremaDeployment.Catalog(scanner.features(), mapping,
+                new ContentEncoders(() -> candidates), icons),
                 problem -> event.addDeploymentProblem(new DeploymentException(problem)));
         found.clear();
         encoders.clear();

@@ -95,7 +95,7 @@ final class IssuerJwkSetSource implements JWKSetSource<SecurityContext> {
             return true;
         }
         String issuerHost = URI.create(issuer).getHost();
-        return issuerHost != null && Protection.isLoopback(issuerHost);
+        return Loopback.isHost(issuerHost);
     }
 
     private URI discoverJwksUri() throws KeySourceException {

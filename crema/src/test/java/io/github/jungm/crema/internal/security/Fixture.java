@@ -2,6 +2,8 @@ package io.github.jungm.crema.internal.security;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
+import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
 import java.security.Principal;
 import java.time.Duration;
@@ -12,10 +14,13 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.TreeMap;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionStage;
 import java.util.stream.Collectors;
 
 import org.mcpjava.server.McpServer;
 import org.mcpjava.server.completion.CompletePrompt;
+import org.mcpjava.server.progress.Progress;
 import org.mcpjava.server.prompts.Prompt;
 import org.mcpjava.server.resources.Resource;
 import org.mcpjava.server.tools.Tool;
@@ -25,7 +30,9 @@ import io.github.jungm.crema.McpServerInfo;
 import io.github.jungm.crema.internal.config.ConfigLookup;
 import io.github.jungm.crema.internal.config.CremaSettings;
 import io.github.jungm.crema.internal.config.ServerSettings;
+import io.github.jungm.crema.internal.http.Headers;
 import io.github.jungm.crema.internal.http.HttpReply;
+import io.github.jungm.crema.internal.http.HttpRequest;
 import io.github.jungm.crema.internal.http.McpTransport;
 import io.github.jungm.crema.internal.invoke.ContentEncoders;
 import io.github.jungm.crema.internal.invoke.Mapping;
@@ -37,6 +44,7 @@ import io.github.jungm.crema.internal.model.ServerRegistry;
 import io.github.jungm.crema.internal.protocol.Dispatcher;
 import io.github.jungm.crema.internal.protocol.Json;
 import io.github.jungm.crema.internal.protocol.Services;
+import io.github.jungm.crema.testkit.FakeAuthorizationServer;
 import jakarta.annotation.security.DenyAll;
 import jakarta.annotation.security.PermitAll;
 import jakarta.annotation.security.RolesAllowed;
@@ -121,6 +129,12 @@ final class Fixture {
         @CompletePrompt("adminPrompt")
         public List<String> completeTopic(String topic) {
             return List.of(topic + "1");
+        }
+
+        @Tool
+        @RolesAllowed("admin")
+        public String adminProgress(Progress progress) {
+            return "progress";
         }
 
         @Resource(uri = "test://admin")
@@ -246,7 +260,7 @@ final class Fixture {
     /**
      * The HTTP exchange of one MCP request.
      */
-    record Exchange(int status, Map<String, String> headers, JsonObject message) {
+    record Exchange(int status, Map<String, String> headers, JsonObject message, boolean streamed) {
 
         String challenge() {
             return headers.get("WWW-Authenticate");
@@ -266,44 +280,62 @@ final class Fixture {
         }
     }
 
-    Exchange call(McpServerModel server, Caller caller, String method, String params, String name) {
-        McpTransport.Screening screening = transport.screen(server, null, caller);
-        if (screening instanceof McpTransport.Reply reply) {
-            return exchange(reply.reply());
-        }
-        Caller admitted = ((McpTransport.Admitted) screening).caller();
-        String body = "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"" + method + "\",\"params\":{\"_meta\":{"
-                + "\"io.modelcontextprotocol/protocolVersion\":\"2026-07-28\","
-                + "\"io.modelcontextprotocol/clientCapabilities\":{}}" + params + "}}";
-        Map<String, String> headers = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
-        headers.put("MCP-Protocol-Version", "2026-07-28");
-        headers.put("Mcp-Method", method);
-        if (name != null) {
-            headers.put("Mcp-Name", name);
-        }
-        McpTransport.Plan plan = transport.plan(server, body.getBytes(StandardCharsets.UTF_8),
-                header -> headers.containsKey(header) ? List.of(headers.get(header)) : List.of(), admitted);
-        if (plan instanceof McpTransport.Reply reply) {
-            return exchange(reply.reply());
-        }
-        return exchange(transport.respond(server, ((McpTransport.Respond) plan).request(), admitted));
-    }
-
-    Exchange callTool(McpServerModel server, Caller caller, String tool) {
-        return call(server, caller, "tools/call", ",\"name\":\"" + tool + "\"", tool);
-    }
-
-    Exchange listTools(McpServerModel server, Caller caller) {
-        return call(server, caller, "tools/list", "", null);
-    }
-
-    private static Exchange exchange(HttpReply reply) {
-        return new Exchange(reply.status(), reply.headers(),
-                reply.body() == null ? null : (JsonObject) Json.parse(reply.body()));
+    Exchange call(McpServerModel server, RequestCaller caller, String method, String params, String name) {
+        return call(server, caller, method, params, name, "");
     }
 
     /**
-     * A request as the Runtime sees it.
+     * @param meta further {@code _meta} members, each preceded by a comma
+     */
+    Exchange call(McpServerModel server, RequestCaller caller, String method, String params, String name,
+            String meta) {
+        String body = "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"" + method + "\",\"params\":{\"_meta\":{"
+                + "\"io.modelcontextprotocol/protocolVersion\":\"2026-07-28\","
+                + "\"io.modelcontextprotocol/clientCapabilities\":{}" + meta + "}" + params + "}}";
+        Map<String, List<String>> headers = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
+        headers.putAll(caller.headers);
+        headers.put("MCP-Protocol-Version", List.of("2026-07-28"));
+        headers.put("Mcp-Method", List.of(method));
+        if (name != null) {
+            headers.put("Mcp-Name", List.of(name));
+        }
+        McpTransport.Outcome outcome;
+        try {
+            outcome = transport.handle(server, HttpRequest.post(body.getBytes(StandardCharsets.UTF_8),
+                    Headers.of(headers)), caller);
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
+        if (outcome instanceof McpTransport.Stream stream) {
+            List<String> events = new ArrayList<>();
+            stream.writeTo(new McpTransport.EventStream() {
+                @Override
+                public CompletionStage<?> send(String json) {
+                    events.add(json);
+                    return CompletableFuture.completedFuture(null);
+                }
+
+                @Override
+                public void close() {
+                }
+            });
+            return new Exchange(200, Map.of(), (JsonObject) Json.parse(events.get(events.size() - 1)), true);
+        }
+        HttpReply reply = (HttpReply) outcome;
+        return new Exchange(reply.status(), reply.headers(),
+                reply.body() == null ? null : (JsonObject) Json.parse(reply.body()), false);
+    }
+
+    Exchange callTool(McpServerModel server, RequestCaller caller, String tool) {
+        return call(server, caller, "tools/call", ",\"name\":\"" + tool + "\"", tool);
+    }
+
+    Exchange listTools(McpServerModel server, RequestCaller caller) {
+        return call(server, caller, "tools/list", "", null);
+    }
+
+    /**
+     * A request as the Runtime sees it: its headers, and the caller the Runtime authenticated.
      */
     static final class RequestCaller implements Caller {
 
@@ -328,11 +360,6 @@ final class Fixture {
 
         static RequestCaller bearer(String token) {
             return withAuthorization("Bearer " + token);
-        }
-
-        @Override
-        public List<String> header(String name) {
-            return headers.getOrDefault(name, List.of());
         }
 
         @Override

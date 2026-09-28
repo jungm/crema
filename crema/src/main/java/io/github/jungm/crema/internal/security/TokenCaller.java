@@ -3,7 +3,6 @@ package io.github.jungm.crema.internal.security;
 import java.security.Principal;
 import java.util.ArrayList;
 import java.util.Collection;
-import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
@@ -16,17 +15,14 @@ import io.github.jungm.crema.McpCaller;
 final class TokenCaller implements Caller {
 
     private final Class<?> application;
-    private final Caller request;
     private final CallerPrincipal principal;
     private final Set<String> roles;
 
     /**
      * @param application the {@code McpApplication} subclass of the MCP Server the token was validated for
-     * @param request the caller according to the Runtime, for headers
      */
-    TokenCaller(Class<?> application, Caller request, CallerPrincipal principal, Set<String> roles) {
+    TokenCaller(Class<?> application, CallerPrincipal principal, Set<String> roles) {
         this.application = application;
-        this.request = request;
         this.principal = principal;
         this.roles = Set.copyOf(roles);
     }
@@ -36,11 +32,6 @@ final class TokenCaller implements Caller {
      */
     boolean isFor(Class<?> application) {
         return this.application == application;
-    }
-
-    @Override
-    public List<String> header(String name) {
-        return request.header(name);
     }
 
     @Override

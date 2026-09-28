@@ -7,13 +7,14 @@ import java.nio.charset.StandardCharsets;
 import java.util.Base64;
 import java.util.List;
 import java.util.NoSuchElementException;
+import java.util.Optional;
 import java.util.Set;
-import java.util.function.Function;
 
 import io.github.jungm.crema.internal.invoke.McpRequestImpl;
 import io.github.jungm.crema.internal.protocol.Dispatcher;
 import io.github.jungm.crema.internal.protocol.Json;
 import io.github.jungm.crema.internal.protocol.McpError;
+import io.github.jungm.crema.internal.protocol.Rejection;
 import io.github.jungm.crema.internal.protocol.Request;
 import jakarta.json.JsonException;
 import jakarta.json.JsonNumber;
@@ -36,11 +37,11 @@ import jakarta.json.JsonValue;
  * </ol>
  * All failures but the last are answered with HTTP {@code 400}.
  */
-public final class RequestValidator {
+final class RequestValidator {
 
-    public static final String PROTOCOL_VERSION_HEADER = "MCP-Protocol-Version";
-    public static final String METHOD_HEADER = "Mcp-Method";
-    public static final String NAME_HEADER = "Mcp-Name";
+    static final String PROTOCOL_VERSION_HEADER = "MCP-Protocol-Version";
+    static final String METHOD_HEADER = "Mcp-Method";
+    static final String NAME_HEADER = "Mcp-Name";
 
     private static final Set<String> NAMED_METHODS = Set.of("tools/call", "resources/read", "prompts/get");
     private static final String SENTINEL_PREFIX = "=?base64?";
@@ -50,41 +51,18 @@ public final class RequestValidator {
     }
 
     /**
-     * The outcome of validation.
+     * @return the valid request, or empty for a JSON-RPC notification, which is accepted and ignored
+     * @throws Rejection the JSON-RPC error response to an invalid request
      */
-    public sealed interface Result {
-    }
-
-    /**
-     * A valid request.
-     */
-    public record Accepted(Request request) implements Result {
-    }
-
-    /**
-     * A JSON-RPC notification, which is accepted with {@code 202} and ignored.
-     */
-    public record Notification() implements Result {
-    }
-
-    /**
-     * An invalid request and the error response to send.
-     */
-    public record Rejected(Dispatcher.Response response) implements Result {
-    }
-
-    /**
-     * @param headers the values of a request header, by case-insensitive name; empty or {@code null} when absent
-     */
-    public static Result validate(byte[] body, Function<String, List<String>> headers) {
+    static Optional<Request> validate(byte[] body, Headers headers) {
         JsonValue json;
         try {
             json = Json.parse(body);
         } catch (JsonException | IllegalStateException | NoSuchElementException e) {
-            return reject(null, new McpError(McpError.PARSE_ERROR, "Parse error", null, 400));
+            throw Rejection.of(null, new McpError(McpError.PARSE_ERROR, "Parse error", null, 400));
         }
         if (!(json instanceof JsonObject message)) {
-            return reject(null, invalidRequest(json.getValueType() == JsonValue.ValueType.ARRAY
+            throw Rejection.of(null, invalidRequest(json.getValueType() == JsonValue.ValueType.ARRAY
                     ? "Batch requests are not supported" : "The body must be a JSON-RPC request object"));
         }
         JsonValue id = message.get("id");
@@ -92,15 +70,15 @@ public final class RequestValidator {
         JsonValue method = message.get("method");
         if (!(message.get("jsonrpc") instanceof JsonString version && version.getString().equals("2.0"))
                 || !(method instanceof JsonString)) {
-            return reject(validId ? id : null, invalidRequest(message.containsKey("result")
+            throw Rejection.of(validId ? id : null, invalidRequest(message.containsKey("result")
                     || message.containsKey("error") ? "JSON-RPC responses must not be sent to the server"
                             : "The body must be a JSON-RPC 2.0 request with a method"));
         }
         if (id == null) {
-            return new Notification();
+            return Optional.empty();
         }
         if (!validId) {
-            return reject(null, invalidRequest("The request id must be a string or a number"));
+            throw Rejection.of(null, invalidRequest("The request id must be a string or a number"));
         }
         String methodName = ((JsonString) method).getString();
         try {
@@ -140,22 +118,23 @@ public final class RequestValidator {
             if (!Dispatcher.isImplemented(methodName)) {
                 throw Dispatcher.methodNotFound(methodName);
             }
-            return new Accepted(new Request(id, methodName, params));
+            return Optional.of(new Request(id, methodName, params));
         } catch (McpError e) {
-            return reject(id, e);
+            throw Rejection.of(id, e);
         }
     }
 
     /**
-     * Decodes a header value: joins repeated fields with {@code ,} (which Runtimes may split a value at), trims it,
-     * rejects characters outside visible ASCII, space and tab, and decodes the Base64 sentinel
+     * Decodes the value of an MCP header field: joins repeated fields with {@code ,} (which Runtimes may split a
+     * value at), trims it, rejects characters outside visible ASCII, space and tab, and decodes the Base64 sentinel
      * {@code =?base64?...?=} as UTF-8.
      *
+     * @param values the field's values, as {@link Headers#all} returns them
      * @return the value, or {@code null} if the header is absent
      * @throws IllegalArgumentException if the value is malformed
      */
     static String decode(List<String> values) {
-        if (values == null || values.isEmpty()) {
+        if (values.isEmpty()) {
             return null;
         }
         String value = String.join(",", values).strip();
@@ -184,10 +163,10 @@ public final class RequestValidator {
         return value;
     }
 
-    private static String header(Function<String, List<String>> headers, String name, String method) {
+    private static String header(Headers headers, String name, String method) {
         String value;
         try {
-            value = decode(headers.apply(name));
+            value = decode(headers.all(name));
         } catch (IllegalArgumentException e) {
             throw headerMismatch("Header " + name + " " + e.getMessage());
         }
@@ -217,9 +196,5 @@ public final class RequestValidator {
 
     private static McpError invalidRequest(String message) {
         return new McpError(McpError.INVALID_REQUEST, message, null, 400);
-    }
-
-    private static Rejected reject(JsonValue id, McpError error) {
-        return new Rejected(Dispatcher.error(id, error));
     }
 }

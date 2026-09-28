@@ -2,7 +2,8 @@ package io.github.jungm.crema.internal.http;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -12,12 +13,12 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
-import java.util.function.Function;
 
 import org.junit.jupiter.api.Test;
 
-import io.github.jungm.crema.internal.protocol.Dispatcher;
 import io.github.jungm.crema.internal.protocol.Json;
+import io.github.jungm.crema.internal.protocol.Rejection;
+import io.github.jungm.crema.internal.protocol.Request;
 import jakarta.json.JsonObject;
 
 /**
@@ -30,11 +31,11 @@ class RequestValidatorTest {
 
     @Test
     void validRequest() {
-        RequestValidator.Result result = validate(body(1, "tools/list", "2026-07-28", ""),
+        Result result = validate(body(1, "tools/list", "2026-07-28", ""),
                 headers("2026-07-28", "tools/list", null));
-        RequestValidator.Accepted accepted = assertInstanceOf(RequestValidator.Accepted.class, result);
-        assertEquals("tools/list", accepted.request().method());
-        assertEquals(Json.parse("1"), accepted.request().id());
+        Request accepted = accepted(result);
+        assertEquals("tools/list", accepted.method());
+        assertEquals(Json.parse("1"), accepted.id());
     }
 
     @Test
@@ -55,7 +56,7 @@ class RequestValidatorTest {
 
     @Test
     void notificationsAreAccepted() {
-        assertInstanceOf(RequestValidator.Notification.class,
+        notification(
                 validate("{\"jsonrpc\":\"2.0\",\"method\":\"notifications/cancelled\"}", Map.of()));
     }
 
@@ -117,21 +118,21 @@ class RequestValidatorTest {
     @Test
     void nameHeader() {
         String call = body(1, "tools/call", "2026-07-28", ",\"name\":\"echo\"");
-        assertInstanceOf(RequestValidator.Accepted.class, validate(call, headers("2026-07-28", "tools/call", "echo")));
-        assertInstanceOf(RequestValidator.Accepted.class,
+        accepted(validate(call, headers("2026-07-28", "tools/call", "echo")));
+        accepted(
                 validate(call, headers("2026-07-28", "tools/call", "  echo ")));
         assertRejected(400, -32020, "1", validate(call, headers("2026-07-28", "tools/call", "other")));
         assertRejected(400, -32020, "1", validate(call, headers("2026-07-28", "tools/call", null)));
 
         String read = body(1, "resources/read", "2026-07-28", ",\"uri\":\"file:///a%20b.txt\"");
-        assertInstanceOf(RequestValidator.Accepted.class,
+        accepted(
                 validate(read, headers("2026-07-28", "resources/read", "file:///a%20b.txt")));
         assertRejected(400, -32020, "1", validate(read, headers("2026-07-28", "resources/read", "file:///a b.txt")));
 
         String get = body(1, "prompts/get", "2026-07-28", ",\"name\":\"p\"");
         assertRejected(400, -32020, "1", validate(get, headers("2026-07-28", "prompts/get", null)));
         String complete = body(1, "completion/complete", "2026-07-28", "");
-        assertInstanceOf(RequestValidator.Accepted.class,
+        accepted(
                 validate(complete, headers("2026-07-28", "completion/complete", null)));
     }
 
@@ -140,7 +141,7 @@ class RequestValidatorTest {
         Map<String, String> headers = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
         headers.put("mcp-protocol-version", "2026-07-28");
         headers.put("MCP-METHOD", "tools/list");
-        assertInstanceOf(RequestValidator.Accepted.class,
+        accepted(
                 validate(body(1, "tools/list", "2026-07-28", ""), headers));
     }
 
@@ -148,7 +149,7 @@ class RequestValidatorTest {
     void base64Sentinel() {
         String name = "Hello, 世界";
         String call = body(1, "tools/call", "2026-07-28", ",\"name\":\"" + name + "\"");
-        assertInstanceOf(RequestValidator.Accepted.class,
+        accepted(
                 validate(call, headers("2026-07-28", "tools/call", "=?base64?SGVsbG8sIOS4lueVjA==?=")));
         assertEquals("=?base64?literal?=", RequestValidator.decode(List.of("=?base64?PT9iYXNlNjQ/bGl0ZXJhbD89?=")));
         assertEquals("=?BASE64?SGk=?=", RequestValidator.decode(List.of("=?BASE64?SGk=?=")));
@@ -169,14 +170,9 @@ class RequestValidatorTest {
     void repeatedHeadersAreJoined() {
         assertEquals("a,b", RequestValidator.decode(List.of("a", "b")));
         String read = body(1, "resources/read", "2026-07-28", ",\"uri\":\"x://a,b\"");
-        Function<String, List<String>> headers = name -> switch (name) {
-            case "MCP-Protocol-Version" -> List.of("2026-07-28");
-            case "Mcp-Method" -> List.of("resources/read");
-            case "Mcp-Name" -> List.of("x://a", "b");
-            default -> List.of();
-        };
-        assertInstanceOf(RequestValidator.Accepted.class,
-                RequestValidator.validate(read.getBytes(StandardCharsets.UTF_8), headers));
+        Headers headers = Headers.of(Map.of("MCP-Protocol-Version", List.of("2026-07-28"),
+                "Mcp-Method", List.of("resources/read"), "Mcp-Name", List.of("x://a", "b")));
+        assertTrue(RequestValidator.validate(read.getBytes(StandardCharsets.UTF_8), headers).isPresent());
     }
 
     static String body(Object id, String method, String version, String params) {
@@ -194,21 +190,49 @@ class RequestValidatorTest {
         return headers;
     }
 
-    private static RequestValidator.Result validate(String body, Map<String, String> headers) {
-        return RequestValidator.validate(body.getBytes(StandardCharsets.UTF_8),
-                name -> headers.containsKey(name) ? List.of(headers.get(name)) : List.of());
+    /**
+     * What validation came to: a request, a notification (neither is set), or a rejection.
+     */
+    private record Result(Request request, Rejection rejection) {
     }
 
-    private static JsonObject assertRejected(int status, int code, String id, RequestValidator.Result result) {
-        RequestValidator.Rejected rejected = assertInstanceOf(RequestValidator.Rejected.class, result);
-        Dispatcher.Response response = rejected.response();
-        assertEquals(status, response.status(), response.message().toString());
-        JsonObject error = response.message().getJsonObject("error");
-        assertEquals(code, error.getInt("code"), response.message().toString());
+    static Headers lookup(Map<String, String> headers) {
+        Map<String, List<String>> fields = new LinkedHashMap<>();
+        headers.forEach((name, value) -> fields.put(name, List.of(value)));
+        return Headers.of(fields);
+    }
+
+    private static Result validate(String body, Map<String, String> headers) {
+        try {
+            return new Result(RequestValidator.validate(body.getBytes(StandardCharsets.UTF_8), lookup(headers))
+                    .orElse(null), null);
+        } catch (Rejection e) {
+            return new Result(null, e);
+        }
+    }
+
+    private static Request accepted(Result result) {
+        assertNull(result.rejection(), () -> String.valueOf(result.rejection().message()));
+        assertNotNull(result.request());
+        return result.request();
+    }
+
+    private static void notification(Result result) {
+        assertNull(result.rejection(), () -> String.valueOf(result.rejection().message()));
+        assertNull(result.request());
+    }
+
+    private static JsonObject assertRejected(int status, int code, String id, Result result) {
+        Rejection rejection = result.rejection();
+        assertNotNull(rejection, "accepted");
+        JsonObject message = rejection.message();
+        assertEquals(status, rejection.status(), message.toString());
+        JsonObject error = message.getJsonObject("error");
+        assertEquals(code, error.getInt("code"), message.toString());
         if (id == null) {
-            assertFalse(response.message().containsKey("id"), response.message().toString());
+            assertFalse(message.containsKey("id"), message.toString());
         } else {
-            assertEquals(Json.parse(id), response.message().get("id"));
+            assertEquals(Json.parse(id), message.get("id"));
         }
         return error;
     }
