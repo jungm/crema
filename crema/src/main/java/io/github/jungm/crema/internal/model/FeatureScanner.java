@@ -358,7 +358,7 @@ public final class FeatureScanner {
             errors.add("the Argument '" + name + "' has the primitive type " + type.getTypeName()
                     + " and required = false, so it needs a defaultValue or a wrapper type");
         }
-        required = required && defaultValue == null && !mapping.binder().isOptionalType(type);
+        required = required && defaultValue == null && !Types.isOptional(type);
         return new Param.Argument(name, type, required, defaultValue, title, description);
     }
 

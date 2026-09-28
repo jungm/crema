@@ -2,7 +2,6 @@ package io.github.jungm.crema.internal.bind;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
@@ -285,17 +284,6 @@ class ArgumentBinderTest {
         assertEquals(OptionalDouble.empty(), binder.absent(OptionalDouble.class));
         assertEquals("a value is required",
                 assertThrows(BindingException.class, () -> binder.absent(int.class)).getMessage());
-    }
-
-    @Test
-    void optionalTypes() {
-        assertTrue(binder.isOptionalType(new TypeLiteral<Optional<String>>() { }.type()));
-        assertTrue(binder.isOptionalType(Optional.class));
-        assertTrue(binder.isOptionalType(OptionalInt.class));
-        assertTrue(binder.isOptionalType(OptionalLong.class));
-        assertTrue(binder.isOptionalType(OptionalDouble.class));
-        assertFalse(binder.isOptionalType(String.class));
-        assertFalse(binder.isOptionalType(int.class));
     }
 
     @Test

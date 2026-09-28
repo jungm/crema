@@ -4,10 +4,6 @@ import java.io.StringReader;
 import java.lang.reflect.Type;
 import java.math.BigDecimal;
 import java.math.BigInteger;
-import java.util.Optional;
-import java.util.OptionalDouble;
-import java.util.OptionalInt;
-import java.util.OptionalLong;
 
 import io.github.jungm.crema.internal.json.Json;
 import jakarta.json.JsonNumber;
@@ -130,19 +126,7 @@ public final class JsonbBridge implements AutoCloseable {
         if (raw.isPrimitive()) {
             throw new JsonbException("Cannot deserialize null into " + raw.getName());
         }
-        if (raw == Optional.class) {
-            return Optional.empty();
-        }
-        if (raw == OptionalInt.class) {
-            return OptionalInt.empty();
-        }
-        if (raw == OptionalLong.class) {
-            return OptionalLong.empty();
-        }
-        if (raw == OptionalDouble.class) {
-            return OptionalDouble.empty();
-        }
-        return raw == JsonValue.class ? JsonValue.NULL : null;
+        return raw == JsonValue.class ? JsonValue.NULL : Types.emptyOptional(raw);
     }
 
     private JsonValue directJsonValue(Object value) {

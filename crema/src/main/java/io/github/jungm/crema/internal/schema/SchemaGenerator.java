@@ -167,16 +167,10 @@ public final class SchemaGenerator {
         if (Enum.class.isAssignableFrom(raw)) {
             return Kind.ENUM;
         }
-        if (isPlatformClass(raw)) {
+        if (Types.isPlatformClass(raw)) {
             return Kind.ANY;
         }
         return Kind.BEAN;
-    }
-
-    private static boolean isPlatformClass(Class<?> raw) {
-        String name = raw.getName();
-        return name.startsWith("java.") || name.startsWith("javax.") || name.startsWith("jakarta.")
-                || name.startsWith("jdk.") || name.startsWith("sun.") || name.startsWith("com.sun.");
     }
 
     private static Type adaptedType(Class<?> raw) {
