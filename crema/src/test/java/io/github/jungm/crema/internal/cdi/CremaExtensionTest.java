@@ -4,7 +4,9 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.lang.reflect.Proxy;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -39,6 +41,9 @@ import jakarta.enterprise.context.Dependent;
 import jakarta.enterprise.inject.spi.DeploymentException;
 import jakarta.inject.Inject;
 import jakarta.json.JsonObject;
+import jakarta.servlet.ServletContext;
+import jakarta.servlet.ServletContextEvent;
+import jakarta.servlet.ServletContextListener;
 
 /**
  * The CDI extension in Weld SE, with the {@code McpApplication} subclasses declared the way the
@@ -133,14 +138,18 @@ class CremaExtensionTest {
         }
     }
 
+    private static final List<Object> LISTENERS = new ArrayList<>();
+    private static final ServletContext CONTEXT = context(CremaExtensionTest.class.getClassLoader());
+
     @AfterEach
     void reset() {
+        LISTENERS.clear();
         CremaDeployment.reset();
     }
 
     @Test
     void servesFeaturesThroughCdi() {
-        assertEquals(List.of(), CremaDeployment.applicationsDiscovered(applications()));
+        assertEquals(List.of(), CremaDeployment.applicationsDiscovered(CONTEXT, applications()));
         Tools.DESTROYED.set(0);
         try (WeldContainer container = weld(Tools.class, Counter.class, PointEncoder.class, BeanIcons.class,
                 Prompts.class).initialize()) {
@@ -160,7 +169,7 @@ class CremaExtensionTest {
     void applicationsMayArriveAfterFeatures() {
         try (WeldContainer container = weld(Tools.class, Counter.class).initialize()) {
             assertEquals(Optional.empty(), CremaDeployment.transport());
-            assertEquals(List.of(), CremaDeployment.applicationsDiscovered(applications()));
+            assertEquals(List.of(), CremaDeployment.applicationsDiscovered(CONTEXT, applications()));
             McpTransport transport = CremaDeployment.transport().orElseThrow();
             assertEquals("1", text(call(transport, transport.server(App.class).orElseThrow(), "tools/call",
                     "count")));
@@ -169,7 +178,7 @@ class CremaExtensionTest {
 
     @Test
     void invalidFeaturesFailDeployment() {
-        CremaDeployment.applicationsDiscovered(applications());
+        CremaDeployment.applicationsDiscovered(CONTEXT, applications());
         DeploymentException e = assertThrows(DeploymentException.class, () -> weld(Invalid.class).initialize());
         assertTrue(e.getMessage().contains(Invalid.class.getName() + "#wrong(): Prompt methods must return"),
                 e.getMessage());
@@ -177,7 +186,7 @@ class CremaExtensionTest {
 
     @Test
     void unknownServersFailDeploymentInCdi() {
-        CremaDeployment.applicationsDiscovered(applications());
+        CremaDeployment.applicationsDiscovered(CONTEXT, applications());
         DeploymentException e = assertThrows(DeploymentException.class, () -> weld(Unbound.class).initialize());
         assertTrue(e.getMessage().contains("is bound to the MCP Server 'elsewhere'"), e.getMessage());
     }
@@ -185,11 +194,71 @@ class CremaExtensionTest {
     @Test
     void unknownServersFailDeploymentInTheInitializer() {
         try (WeldContainer container = weld(Unbound.class).initialize()) {
-            List<String> problems = CremaDeployment.applicationsDiscovered(applications());
+            List<String> problems = CremaDeployment.applicationsDiscovered(CONTEXT, applications());
             assertEquals(1, problems.size());
             assertTrue(problems.get(0).contains("is bound to the MCP Server 'elsewhere'"), problems.get(0));
             assertEquals(Optional.empty(), CremaDeployment.transport());
         }
+    }
+
+    @Test
+    void secondWebApplicationWithApplicationsFails() {
+        assertEquals(List.of(), CremaDeployment.applicationsDiscovered(CONTEXT, applications()));
+        ServletContext other = context(new ClassLoader() { });
+        assertEquals(List.of(CremaDeployment.SHARED), CremaDeployment.applicationsDiscovered(other, applications()));
+        assertEquals(List.of(), CremaDeployment.applicationsDiscovered(other,
+                new CremaDeployment.Applications(List.of(), CremaSettings.defaults())));
+        assertEquals(List.of(), CremaDeployment.applicationsDiscovered(CONTEXT, applications()));
+    }
+
+    @Test
+    void secondWebApplicationWithFeaturesFails() {
+        try (WeldContainer container = weld(Tools.class, Counter.class).initialize()) {
+            assertTrue(CremaDeployment.transport().isEmpty());
+        }
+        DeploymentException e = assertThrows(DeploymentException.class, () -> weld(Prompts.class).initialize());
+        assertTrue(e.getMessage().contains(CremaDeployment.SHARED), e.getMessage());
+        weld().initialize().close();
+    }
+
+    @Test
+    void applicationsWithoutCdiFailToStart() {
+        assertEquals(List.of(), CremaDeployment.applicationsDiscovered(CONTEXT, applications()));
+        ServletContextListener check = (ServletContextListener) LISTENERS.get(0);
+        IllegalStateException e = assertThrows(IllegalStateException.class,
+                () -> check.contextInitialized(new ServletContextEvent(CONTEXT)));
+        assertEquals(CremaDeployment.CDI_INACTIVE, e.getMessage());
+        try (WeldContainer container = weld(Tools.class, Counter.class).initialize()) {
+            check.contextInitialized(new ServletContextEvent(CONTEXT));
+        }
+    }
+
+    @Test
+    void noApplicationsNoCdiCheck() {
+        CremaDeployment.applicationsDiscovered(CONTEXT,
+                new CremaDeployment.Applications(List.of(), CremaSettings.defaults()));
+        assertEquals(List.of(), LISTENERS);
+    }
+
+    private static ServletContext context(ClassLoader loader) {
+        return (ServletContext) Proxy.newProxyInstance(CremaExtensionTest.class.getClassLoader(),
+                new Class<?>[] {ServletContext.class}, (proxy, method, args) -> {
+                    switch (method.getName()) {
+                        case "addListener":
+                            LISTENERS.add(args[0]);
+                            return null;
+                        case "getClassLoader":
+                            return loader;
+                        case "equals":
+                            return proxy == args[0];
+                        case "hashCode":
+                            return System.identityHashCode(proxy);
+                        case "toString":
+                            return "ServletContext";
+                        default:
+                            throw new UnsupportedOperationException(method.getName());
+                    }
+                });
     }
 
     private static Weld weld(Class<?>... beans) {

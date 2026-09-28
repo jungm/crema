@@ -2,6 +2,7 @@ package io.github.jungm.crema.internal.http;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -59,7 +60,7 @@ public class CremaInitializer implements ServletContainerInitializer {
                     icons == null ? null : icons.iconProvider()));
         }
         if (problems.isEmpty()) {
-            problems.addAll(CremaDeployment.applicationsDiscovered(
+            problems.addAll(CremaDeployment.applicationsDiscovered(context,
                     new CremaDeployment.Applications(applications, settings)));
         }
         if (!problems.isEmpty()) {
@@ -73,18 +74,28 @@ public class CremaInitializer implements ServletContainerInitializer {
     }
 
     /**
-     * Rejects subclasses that change which JAX-RS classes serve MCP traffic.
+     * Rejects subclasses that declare methods: overriding {@code getClasses()}, {@code getSingletons()} or
+     * {@code getProperties()} changes which JAX-RS classes serve MCP traffic, and on TomEE any declared method
+     * switches off provider scanning for the whole web application.
      */
     static void checkOverrides(Class<?> type, List<String> problems) {
         for (Class<?> c = type; c != McpApplication.class; c = c.getSuperclass()) {
-            for (String method : APPLICATION_METHODS) {
-                try {
-                    c.getDeclaredMethod(method);
-                    problems.add("McpApplication " + type.getName() + ": " + c.getName() + " overrides " + method
-                            + "(), but only Crema decides which JAX-RS classes serve MCP traffic");
-                } catch (NoSuchMethodException e) {
-                    // not overridden
+            List<String> others = new ArrayList<>();
+            for (Method method : c.getDeclaredMethods()) {
+                if (method.isSynthetic()) {
+                    continue;
                 }
+                if (APPLICATION_METHODS.contains(method.getName()) && method.getParameterCount() == 0) {
+                    problems.add("McpApplication " + type.getName() + ": " + c.getName() + " overrides "
+                            + method.getName() + "(), but only Crema decides which JAX-RS classes serve MCP traffic");
+                } else {
+                    others.add(method.getName() + "()");
+                }
+            }
+            if (!others.isEmpty()) {
+                problems.add("McpApplication " + type.getName() + ": " + c.getName() + " declares the methods "
+                        + others.stream().sorted().distinct().toList() + ", but McpApplication subclasses must not "
+                        + "declare methods");
             }
         }
     }
