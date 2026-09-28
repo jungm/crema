@@ -82,6 +82,22 @@ final class IssuerJwkSetSource implements JWKSetSource<SecurityContext> {
                 URI.create(origin + "/.well-known/oauth-authorization-server" + path));
     }
 
+    /**
+     * Whether a {@code jwks_uri} from the metadata may be used: {@code https}, or {@code http} to a loopback host
+     * only if the issuer is on a loopback host too, so that the metadata of a remote Authorization Server can't
+     * point Crema at local plain-text services.
+     */
+    static boolean isAcceptableJwksUri(URI jwksUri, String issuer) {
+        if (!Protection.isFetchable(jwksUri)) {
+            return false;
+        }
+        if (jwksUri.getScheme().equalsIgnoreCase("https")) {
+            return true;
+        }
+        String issuerHost = URI.create(issuer).getHost();
+        return issuerHost != null && Protection.isLoopback(issuerHost);
+    }
+
     private URI discoverJwksUri() throws KeySourceException {
         StringBuilder failures = new StringBuilder();
         for (URI url : metadataUrls(issuer)) {
@@ -102,9 +118,9 @@ final class IssuerJwkSetSource implements JWKSetSource<SecurityContext> {
             }
             try {
                 URI uri = new URI(jwksUri.getString());
-                if (!Protection.isFetchable(uri)) {
+                if (!isAcceptableJwksUri(uri, issuer)) {
                     throw new JWKSetRetrievalException("The jwks_uri " + uri + " in the metadata at " + url
-                            + " isn't an https URL", null);
+                            + " isn't an https URL (http only for localhost, if the issuer is too)", null);
                 }
                 return uri;
             } catch (URISyntaxException e) {

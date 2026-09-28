@@ -338,6 +338,38 @@ class BearerTokenTest {
     }
 
     @Test
+    void redirectsOfTheJwkSetAreNotFollowed() {
+        as.redirect(true);
+        fixture(false);
+        assertInvalid(as.token(ENDPOINT));
+        assertEquals(0, as.movedRequests());
+    }
+
+    @Test
+    void redirectsOfTheMetadataAreNotFollowed() {
+        as.redirect(true);
+        fixture(true);
+        assertInvalid(as.token(ENDPOINT));
+        assertEquals(0, as.movedRequests());
+    }
+
+    @Test
+    void plainHttpJwksUriIsAcceptedOnlyForLoopbackIssuers() {
+        assertTrue(IssuerJwkSetSource.isAcceptableJwksUri(java.net.URI.create("https://as.test/keys"),
+                "https://as.test"));
+        assertTrue(IssuerJwkSetSource.isAcceptableJwksUri(java.net.URI.create("http://127.0.0.1:8080/keys"),
+                "http://localhost:8080/realm"));
+        assertTrue(IssuerJwkSetSource.isAcceptableJwksUri(java.net.URI.create("http://localhost/keys"),
+                "https://127.0.0.1/realm"));
+        assertEquals(false, IssuerJwkSetSource.isAcceptableJwksUri(java.net.URI.create("http://localhost:8080/keys"),
+                "https://as.test"));
+        assertEquals(false, IssuerJwkSetSource.isAcceptableJwksUri(java.net.URI.create("http://as.test/keys"),
+                "http://localhost"));
+        assertEquals(false, IssuerJwkSetSource.isAcceptableJwksUri(java.net.URI.create("file:///etc/keys"),
+                "http://localhost"));
+    }
+
+    @Test
     void metadataNamingAnotherIssuerIsRejected() {
         as.advertiseIssuer("https://evil.example.com/realm");
         fixture(true);

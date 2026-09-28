@@ -23,7 +23,6 @@ import com.nimbusds.jose.proc.JOSEObjectTypeVerifier;
 import com.nimbusds.jose.proc.JWSKeySelector;
 import com.nimbusds.jose.proc.JWSVerificationKeySelector;
 import com.nimbusds.jose.proc.SecurityContext;
-import com.nimbusds.jose.util.DefaultResourceRetriever;
 import com.nimbusds.jose.util.ResourceRetriever;
 import com.nimbusds.jwt.JWTClaimNames;
 import com.nimbusds.jwt.JWTClaimsSet;
@@ -35,7 +34,8 @@ import com.nimbusds.jwt.proc.DefaultJWTProcessor;
  * <ul>
  * <li>keys come from a {@link JWKSourceBuilder} source with caching, refresh-ahead, rate limiting, one retry and
  * outage tolerance; a token with an unknown {@code kid} makes it refresh the JWK set (subject to rate limiting),
- * which picks up rotated keys;</li>
+ * which picks up rotated keys; the keys, and the issuer's metadata if the JWK set URL isn't configured, are
+ * retrieved with bounded timeouts and size and without following redirects;</li>
  * <li>a {@link DefaultJWTProcessor} accepts only JWS tokens signed with {@link #ALGORITHMS} (no {@code none}, no
  * HMAC, no JWE), with a {@code typ} of {@code at+jwt}, {@code JWT} or none;</li>
  * <li>a {@link DefaultJWTClaimsVerifier} requires {@code iss} to equal the issuer, {@code aud} to contain the
@@ -82,7 +82,7 @@ final class TokenValidator implements Closeable {
     TokenValidator(Protection protection, Tuning tuning) {
         this.protection = protection;
         int timeout = (int) tuning.httpTimeout().toMillis();
-        ResourceRetriever retriever = new DefaultResourceRetriever(timeout, timeout, tuning.sizeLimit());
+        ResourceRetriever retriever = new NoRedirectResourceRetriever(timeout, timeout, tuning.sizeLimit());
         JWKSetSource<SecurityContext> source;
         if (protection.jwksUri() != null) {
             try {
