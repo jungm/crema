@@ -46,11 +46,11 @@ import com.nimbusds.jwt.proc.DefaultJWTProcessor;
 final class TokenValidator implements Closeable {
 
     /**
-     * The accepted signature algorithms: asymmetric only.
+     * The accepted signature algorithms: RSA and ECDSA only.
      */
     static final Set<JWSAlgorithm> ALGORITHMS = Set.of(JWSAlgorithm.RS256, JWSAlgorithm.RS384, JWSAlgorithm.RS512,
             JWSAlgorithm.PS256, JWSAlgorithm.PS384, JWSAlgorithm.PS512, JWSAlgorithm.ES256, JWSAlgorithm.ES384,
-            JWSAlgorithm.ES512, JWSAlgorithm.EdDSA);
+            JWSAlgorithm.ES512);
 
     private static final JOSEObjectTypeVerifier<SecurityContext> TYPES = new DefaultJOSEObjectTypeVerifier<>(
             new JOSEObjectType("at+jwt"), JOSEObjectType.JWT, null);

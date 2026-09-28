@@ -240,6 +240,21 @@ class BearerTokenTest {
     }
 
     @Test
+    void onlyRsaAndEcdsaAlgorithmsAreAccepted() {
+        assertEquals(java.util.Set.of(JWSAlgorithm.RS256, JWSAlgorithm.RS384, JWSAlgorithm.RS512,
+                JWSAlgorithm.PS256, JWSAlgorithm.PS384, JWSAlgorithm.PS512, JWSAlgorithm.ES256, JWSAlgorithm.ES384,
+                JWSAlgorithm.ES512), TokenValidator.ALGORITHMS);
+    }
+
+    @Test
+    void edDsaIsInvalid() {
+        fixture(false);
+        String payload = as.token(ENDPOINT).split("\\.")[1];
+        String header = com.nimbusds.jose.util.Base64URL.encode("{\"alg\":\"EdDSA\",\"kid\":\"ed-1\"}").toString();
+        assertInvalid(header + "." + payload + "." + com.nimbusds.jose.util.Base64URL.encode(new byte[64]));
+    }
+
+    @Test
     void typeMustBeAnAccessTokenOrJwt() {
         fixture(false);
         JWTClaimsSet claims = as.claims(ENDPOINT, c -> {
