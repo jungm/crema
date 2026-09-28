@@ -9,9 +9,11 @@ import java.net.URL;
 import java.net.URLClassLoader;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 
 import javax.tools.JavaCompiler;
@@ -38,7 +40,7 @@ import org.mcpjava.server.tools.Tool;
 import org.mcpjava.server.tools.ToolArg;
 import org.mcpjava.server.tools.ToolResponse;
 
-import io.github.jungm.crema.internal.invoke.Mapping;
+import io.github.jungm.crema.internal.TestDeployment;
 import io.github.jungm.crema.internal.json.Json;
 import jakarta.json.JsonObject;
 
@@ -46,8 +48,6 @@ import jakarta.json.JsonObject;
  * Deployment validation of single methods, and the definitions of valid Features.
  */
 class FeatureScannerTest {
-
-    private static final Mapping MAPPING = Mapping.create();
 
     public record Weather(double temperature, String conditions) {
     }
@@ -108,7 +108,7 @@ class FeatureScannerTest {
     void definitions() {
         FeatureScanner scanner = scan(Valid.class);
         assertEquals(List.of(), scanner.problems());
-        Map<String, JsonObject> byName = new java.util.HashMap<>();
+        Map<String, JsonObject> byName = new HashMap<>();
         scanner.features().forEach(f -> {
             if (f instanceof Feature.Tool t) {
                 byName.put(t.name(), t.definition());
@@ -171,11 +171,11 @@ class FeatureScannerTest {
             }
         }
         FeatureScanner scanner = Scanning.scan(scan(Bound.class), Unbound.class, null);
-        Map<String, java.util.Set<String>> servers = new java.util.HashMap<>();
+        Map<String, Set<String>> servers = new HashMap<>();
         scanner.features().forEach(f -> servers.put(f.name(), f.method().servers()));
-        assertEquals(java.util.Set.of("a", "b"), servers.get("both"));
-        assertEquals(java.util.Set.of("a"), servers.get("classOnly"));
-        assertEquals(java.util.Set.of(McpServer.DEFAULT), servers.get("tool"));
+        assertEquals(Set.of("a", "b"), servers.get("both"));
+        assertEquals(Set.of("a"), servers.get("classOnly"));
+        assertEquals(Set.of(McpServer.DEFAULT), servers.get("tool"));
     }
 
     public static class Invalid {
@@ -386,7 +386,7 @@ class FeatureScannerTest {
     void structuredContentMayBeAnyJsonValue() {
         FeatureScanner scanner = scan(AnyStructuredContent.class);
         assertEquals(List.of(), scanner.problems());
-        Map<String, JsonObject> schemas = new java.util.HashMap<>();
+        Map<String, JsonObject> schemas = new HashMap<>();
         scanner.features().forEach(f -> schemas.put(f.name(), ((Feature.Tool) f).definition().getJsonObject("outputSchema")));
         assertEquals(Json.parse("{\"type\":\"string\"}"), schemas.get("string"));
         assertEquals("array", schemas.get("list").getString("type"));
@@ -418,7 +418,7 @@ class FeatureScannerTest {
     }
 
     private static FeatureScanner scan(Class<?> type) {
-        return Scanning.scan(new FeatureScanner(MAPPING, IconLookup.reflective()), type, null);
+        return Scanning.scan(new FeatureScanner(TestDeployment.MAPPING, IconLookup.reflective()), type, null);
     }
 
     private static void assertProblem(List<String> problems, String method, String text) {

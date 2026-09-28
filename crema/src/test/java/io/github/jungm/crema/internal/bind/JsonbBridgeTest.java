@@ -17,6 +17,8 @@ import java.util.Optional;
 import java.util.OptionalInt;
 
 import jakarta.json.Json;
+import jakarta.json.JsonArray;
+import jakarta.json.JsonObject;
 import jakarta.json.JsonValue;
 import jakarta.json.bind.Jsonb;
 import jakarta.json.bind.JsonbBuilder;
@@ -131,8 +133,8 @@ class JsonbBridgeTest {
     void fromJsonValueToJsonValueTypes() {
         JsonValue array = Json.createArrayBuilder().add(1).build();
         assertSame(array, bridge.fromJsonValue(array, JsonValue.class));
-        assertSame(array, bridge.fromJsonValue(array, jakarta.json.JsonArray.class));
-        assertThrows(JsonbException.class, () -> bridge.fromJsonValue(array, jakarta.json.JsonObject.class));
+        assertSame(array, bridge.fromJsonValue(array, JsonArray.class));
+        assertThrows(JsonbException.class, () -> bridge.fromJsonValue(array, JsonObject.class));
     }
 
     @Test
