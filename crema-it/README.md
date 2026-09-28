@@ -29,7 +29,7 @@ server at the end of the run. Liberty uses `webProfile-10.0`, `mpConfig-3.1`, `m
 
 Each test records its observations as `FINDING` lines on stdout and in `target/findings/<runtime>-<test>.txt`.
 
-## Security coexistence (ADR 0001)
+## Security coexistence (Runtime MP-JWT, rejected in ADR 0001)
 
 `SecurityCoexistenceIT` deploys one WAR (built by `CoexistenceWar`) containing:
 
@@ -80,7 +80,7 @@ Further observations:
   without the role). Inherited methods don't count, so `McpApplication` subclasses that declare nothing are fine.
   The switch is `openejb.jaxrs.providers.auto`.
 
-### What this means for ADR 0001
+### Why this rules out Runtime MP-JWT
 
 - **Liberty: MP-JWT and a Jakarta Security mechanism cannot share a WAR.** With `@LoginConfig` deployment fails;
   without it bearer tokens are ignored. The Liberty source has no switch for either (the check is in
