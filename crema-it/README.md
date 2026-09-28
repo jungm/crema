@@ -8,7 +8,6 @@ Maven provisions itself; there is nothing to install by hand.
 JDK 21, one profile per Runtime:
 
 ```sh
-source ~/.sdkman/bin/sdkman-init.sh && sdk use java 21-amzn
 mvn -B -pl crema-it -am verify -Ptomee
 mvn -B -pl crema-it -am verify -Pwildfly
 mvn -B -pl crema-it -am verify -Popenliberty

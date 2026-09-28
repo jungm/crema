@@ -4,7 +4,7 @@ MCP server implementation for Jakarta EE. What to build: [docs/design.md](docs/d
 
 ## Build
 
-- Run Maven with JDK 21: `source ~/.sdkman/bin/sdkman-init.sh && sdk use java 21-amzn`.
+- Run Maven with JDK 21. Check `java -version` after switching; `sdk use` prints nothing when a candidate isn't installed.
 - `mvn -pl crema verify` runs the unit tests. `mvn -pl crema-it verify -P<runtime>` runs the integration tests for one Runtime (`tomee`, `openliberty`, `wildfly`, `payara`).
 - Bytecode targets Java 17: don't use APIs newer than Java 17 in `crema/src/main`.
 
