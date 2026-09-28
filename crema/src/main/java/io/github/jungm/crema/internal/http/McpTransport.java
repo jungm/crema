@@ -84,11 +84,9 @@ public final class McpTransport {
     /**
      * The Protected Resource Metadata (RFC 9728) of a protected MCP Server, or {@code 404} for other MCP Servers.
      * It is served to anyone, without the {@code Origin} check.
-     *
-     * @param caller the caller according to the Runtime, which tells the MCP Endpoint URL
      */
-    public HttpReply resourceMetadata(McpServerModel server, Caller caller) {
-        return dispatcher.services().access().resourceMetadata(server, caller)
+    public HttpReply resourceMetadata(McpServerModel server) {
+        return dispatcher.services().access().resourceMetadata(server)
                 .map(metadata -> HttpReply.json(200, Json.write(metadata)))
                 .orElseGet(() -> new HttpReply(404, Map.of(), null));
     }

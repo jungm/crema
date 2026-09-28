@@ -40,7 +40,6 @@ public final class CremaAccessPolicy implements AccessPolicy, Closeable {
 
     static final String AUTHORIZATION = "Authorization";
     static final String WWW_AUTHENTICATE = "WWW-Authenticate";
-    static final String METADATA_PATH = "/.well-known/oauth-protected-resource";
 
     private static final Logger LOG = Logger.getLogger(CremaAccessPolicy.class.getName());
 
@@ -101,7 +100,7 @@ public final class CremaAccessPolicy implements AccessPolicy, Closeable {
         if (caller instanceof TokenCaller tokenCaller && tokenCaller.isFor(server.application())) {
             return new Admitted(caller);
         }
-        String metadata = metadataUrl(access, caller);
+        String metadata = access.protection().resourceMetadataUrl();
         List<String> authorization = caller.header(AUTHORIZATION);
         if (authorization.isEmpty()) {
             return challenge(metadata, null);
@@ -145,7 +144,8 @@ public final class CremaAccessPolicy implements AccessPolicy, Closeable {
             return new Rejection(403, Map.of());
         }
         return new Rejection(403, Map.of(WWW_AUTHENTICATE,
-                "Bearer error=\"insufficient_scope\", resource_metadata=\"" + metadataUrl(access, caller) + "\""));
+                "Bearer error=\"insufficient_scope\", resource_metadata=\""
+                        + access.protection().resourceMetadataUrl() + "\""));
     }
 
     @Override
@@ -154,17 +154,13 @@ public final class CremaAccessPolicy implements AccessPolicy, Closeable {
     }
 
     @Override
-    public Optional<JsonObject> resourceMetadata(McpServerModel server, Caller caller) {
+    public Optional<JsonObject> resourceMetadata(McpServerModel server) {
         ServerAccess access = access(server);
         if (access.protection() == null) {
             return Optional.empty();
         }
-        String resource = resource(access, caller);
-        if (resource == null) {
-            return Optional.empty();
-        }
         return Optional.of(Json.object()
-                .add("resource", resource)
+                .add("resource", access.protection().resource())
                 .add("authorization_servers", Json.FACTORY.createArrayBuilder().add(access.protection().issuer()))
                 .add("bearer_methods_supported", Json.FACTORY.createArrayBuilder().add("header"))
                 .build());
@@ -189,10 +185,9 @@ public final class CremaAccessPolicy implements AccessPolicy, Closeable {
 
     private Optional<Caller> validate(McpServerModel server, ServerAccess access, Caller caller, String token) {
         Protection protection = access.protection();
-        String resource = resource(access, caller);
-        if (token.isEmpty() || resource == null) {
-            LOG.fine(() -> "Rejected a request to MCP Server '" + protection.server() + "': "
-                    + (token.isEmpty() ? "empty bearer token" : "the MCP Endpoint URL is unknown"));
+        String resource = protection.resource();
+        if (token.isEmpty()) {
+            LOG.fine(() -> "Rejected a request to MCP Server '" + protection.server() + "': empty bearer token");
             return Optional.empty();
         }
         JWTClaimsSet claims;
@@ -229,24 +224,6 @@ public final class CremaAccessPolicy implements AccessPolicy, Closeable {
             throw new IllegalArgumentException("Unknown MCP Server '" + server.settings().wireName() + "'");
         }
         return access;
-    }
-
-    /**
-     * The Resource Identifier: the configured one, else the MCP Endpoint URL of the request.
-     */
-    private static String resource(ServerAccess access, Caller caller) {
-        return access.protection().resource() != null ? access.protection().resource() : caller.endpointUrl();
-    }
-
-    private static String metadataUrl(ServerAccess access, Caller caller) {
-        String endpoint = resource(access, caller);
-        if (endpoint == null) {
-            return METADATA_PATH;
-        }
-        while (endpoint.endsWith("/")) {
-            endpoint = endpoint.substring(0, endpoint.length() - 1);
-        }
-        return endpoint + METADATA_PATH;
     }
 
     private static Rejected challenge(String metadataUrl, String error) {

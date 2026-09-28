@@ -6,10 +6,7 @@ import jakarta.ws.rs.GET;
 import jakarta.ws.rs.Path;
 import jakarta.ws.rs.core.Configuration;
 import jakarta.ws.rs.core.Context;
-import jakarta.ws.rs.core.HttpHeaders;
 import jakarta.ws.rs.core.Response;
-import jakarta.ws.rs.core.SecurityContext;
-import jakarta.ws.rs.core.UriInfo;
 
 /**
  * Serves the Protected Resource Metadata (RFC 9728) of a protected MCP Server at
@@ -20,13 +17,11 @@ import jakarta.ws.rs.core.UriInfo;
 public class ResourceMetadataEndpoint {
 
     @GET
-    public Response get(@Context HttpHeaders httpHeaders, @Context SecurityContext security,
-            @Context UriInfo uriInfo, @Context Configuration configuration) {
+    public Response get(@Context Configuration configuration) {
         Optional<JaxRs.Target> target = JaxRs.target(configuration);
         if (target.isEmpty()) {
             return Response.status(Response.Status.NOT_FOUND).build();
         }
-        return JaxRs.response(target.get().transport().resourceMetadata(target.get().server(),
-                JaxRs.caller(security, JaxRs.headers(httpHeaders.getRequestHeaders()), uriInfo)));
+        return JaxRs.response(target.get().transport().resourceMetadata(target.get().server()));
     }
 }

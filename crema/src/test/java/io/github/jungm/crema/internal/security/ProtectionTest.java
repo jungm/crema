@@ -54,7 +54,19 @@ class ProtectionTest {
 
     private final List<String> problems = new ArrayList<>();
 
+    private static final String RESOURCE = "https://mcp.example.com/app/mcp";
+
+    /**
+     * MicroProfile Config with these values, plus {@link #RESOURCE} as the default MCP Server's resource unless
+     * they set one.
+     */
     private static ConfigLookup microProfile(Map<String, String> values) {
+        Map<String, String> withResource = new HashMap<>(values);
+        withResource.putIfAbsent("crema.default-server.resource", RESOURCE);
+        return bareMicroProfile(withResource);
+    }
+
+    private static ConfigLookup bareMicroProfile(Map<String, String> values) {
         ConfigLookup map = ConfigLookup.of(values);
         return new ConfigLookup() {
             @Override
@@ -80,8 +92,38 @@ class ProtectionTest {
         Protection protection = resolve(Protected.class,
                 microProfile(Map.of("crema.default-server.issuer", "https://as.example.com/realms/x"))).orElseThrow();
         assertEquals(List.of(), problems);
-        assertEquals(new Protection("default", "https://as.example.com/realms/x", null, null, "groups", "sub", 60),
-                protection);
+        assertEquals(new Protection("default", "https://as.example.com/realms/x", null, RESOURCE, "groups", "sub",
+                60), protection);
+        assertEquals(RESOURCE + "/.well-known/oauth-protected-resource", protection.resourceMetadataUrl());
+    }
+
+    @Test
+    void protectedServerNeedsAResource() {
+        assertEquals(Optional.empty(), resolve(Protected.class,
+                bareMicroProfile(Map.of("crema.default-server.issuer", "https://as.example.com"))));
+        assertEquals(1, problems.size());
+        assertTrue(problems.get(0).contains("crema.default-server.resource isn't set"), problems.get(0));
+        assertTrue(problems.get(0).contains(Protected.class.getName()), problems.get(0));
+    }
+
+    @Test
+    void resourceMustBeAnAbsoluteHttpUrlWithoutQuery() {
+        for (String resource : List.of("urn:mcp", "/app/mcp", "https://mcp.example.com/mcp?x=1",
+                "https://mcp.example.com/mcp#f", "https://user@mcp.example.com/mcp", "ftp://mcp.example.com/mcp",
+                "  ")) {
+            problems.clear();
+            assertEquals(Optional.empty(), resolve(Protected.class, microProfile(Map.of(
+                    "crema.default-server.issuer", "https://as.example.com",
+                    "crema.default-server.resource", resource))), resource);
+            assertEquals(1, problems.size(), resource);
+        }
+    }
+
+    @Test
+    void metadataUrlIgnoresTrailingSlashesOfTheResource() {
+        assertEquals("https://mcp.example.com/mcp/.well-known/oauth-protected-resource",
+                new Protection("default", "https://as.example.com", null, "https://mcp.example.com/mcp/", "groups",
+                        "sub", 60).resourceMetadataUrl());
     }
 
     @Test
@@ -119,7 +161,8 @@ class ProtectionTest {
 
     @Test
     void protectedServerNeedsAnIssuer() {
-        assertEquals(Optional.empty(), resolve(DenyAllApp.class, microProfile(Map.of())));
+        assertEquals(Optional.empty(), resolve(DenyAllApp.class,
+                microProfile(Map.of("crema.servers.admin.resource", RESOURCE))));
         assertEquals(1, problems.size());
         assertTrue(problems.get(0).contains("crema.servers.admin.issuer isn't set"), problems.get(0));
     }

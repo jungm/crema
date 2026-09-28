@@ -35,10 +35,12 @@ final class SecurityWar {
 
     /**
      * @param issuer the fake Authorization Server's issuer, trusted by Crema and by the OpenID Connect mechanism
+     * @param resource the protected MCP Server's Resource Identifier
      */
-    static WebArchive create(String name, String issuer) {
+    static WebArchive create(String name, String issuer, String resource) {
         String config = String.join("\n",
                 "crema.default-server.issuer=" + issuer,
+                "crema.default-server.resource=" + resource,
                 "it.oidc.provider-uri=" + issuer,
                 "");
         return ShrinkWrap.create(WebArchive.class, name + ".war")

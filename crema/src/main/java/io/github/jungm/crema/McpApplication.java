@@ -33,14 +33,15 @@ import jakarta.ws.rs.core.Application;
  * <ul>
  * <li>{@code issuer} (required): the Authorization Server's issuer identifier;</li>
  * <li>{@code jwks-uri}: its JWK set URL, read from its metadata by default;</li>
- * <li>{@code resource}: the MCP Endpoint's public URL, which tokens' audience must contain; derived from each
- * request by default;</li>
+ * <li>{@code resource} (required): the MCP Endpoint's public URL, which tokens' audience must contain. It is never
+ * derived from the request;</li>
  * <li>{@code roles-claim}: the dotted path of the claim with the caller's roles, {@code groups} by default (for
  * example {@code realm_access.roles} for Keycloak or {@code roles} for Entra ID);</li>
  * <li>{@code principal-claim}: the claim with the caller's name, {@code sub} by default;</li>
  * <li>{@code clock-skew-seconds}: the tolerated clock skew, {@code 60} by default.</li>
  * </ul>
- * Its Protected Resource Metadata (RFC 9728) is served at {@code <MCP Endpoint>/.well-known/oauth-protected-resource}.
+ * Its Protected Resource Metadata (RFC 9728) is served at {@code <MCP Endpoint>/.well-known/oauth-protected-resource}
+ * and advertised to clients as {@code <resource>/.well-known/oauth-protected-resource}.
  * On other MCP Servers, the caller and its roles are the ones the Runtime authenticated.
  *
  * @see McpCaller

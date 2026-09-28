@@ -23,7 +23,6 @@ import jakarta.ws.rs.core.HttpHeaders;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
 import jakarta.ws.rs.core.SecurityContext;
-import jakarta.ws.rs.core.UriInfo;
 import jakarta.ws.rs.sse.Sse;
 import jakarta.ws.rs.sse.SseEventSink;
 
@@ -41,7 +40,7 @@ public class McpEndpoint {
     @Consumes(MediaType.WILDCARD)
     @Produces(MediaType.APPLICATION_JSON)
     public Response post(InputStream body, @Context HttpHeaders httpHeaders, @Context SecurityContext security,
-            @Context UriInfo uriInfo, @Context Configuration configuration) throws IOException {
+            @Context Configuration configuration) throws IOException {
         Optional<JaxRs.Target> target = JaxRs.target(configuration);
         if (target.isEmpty()) {
             return Response.status(Response.Status.NOT_FOUND).build();
@@ -49,7 +48,7 @@ public class McpEndpoint {
         McpTransport transport = target.get().transport();
         Function<String, List<String>> headers = JaxRs.headers(httpHeaders.getRequestHeaders());
         McpTransport.Screening screening = transport.screen(target.get().server(), JaxRs.first(headers, "Origin"),
-                JaxRs.caller(security, headers, uriInfo));
+                JaxRs.caller(security, headers));
         if (screening instanceof McpTransport.Reply rejected) {
             return JaxRs.response(rejected.reply());
         }
@@ -65,7 +64,7 @@ public class McpEndpoint {
     @Consumes(MediaType.WILDCARD)
     @Produces(MediaType.SERVER_SENT_EVENTS)
     public void stream(InputStream body, @Context HttpHeaders httpHeaders, @Context SecurityContext security,
-            @Context UriInfo uriInfo, @Context Configuration configuration,
+            @Context Configuration configuration,
             @Context HttpServletResponse servletResponse,
             @Context SseEventSink sink, @Context Sse sse) throws IOException {
         Optional<JaxRs.Target> target = JaxRs.target(configuration);
@@ -76,7 +75,7 @@ public class McpEndpoint {
         McpTransport transport = target.get().transport();
         Function<String, List<String>> headers = JaxRs.headers(httpHeaders.getRequestHeaders());
         McpTransport.Screening screening = transport.screen(target.get().server(), JaxRs.first(headers, "Origin"),
-                JaxRs.caller(security, headers, uriInfo));
+                JaxRs.caller(security, headers));
         Caller caller = screening instanceof McpTransport.Admitted admitted ? admitted.caller() : null;
         McpTransport.Plan plan = screening instanceof McpTransport.Reply rejected ? rejected
                 : plan(transport, target.get(), body, headers, caller);
@@ -106,17 +105,17 @@ public class McpEndpoint {
 
     @GET
     public Response get(@Context HttpHeaders httpHeaders, @Context SecurityContext security,
-            @Context UriInfo uriInfo, @Context Configuration configuration) {
-        return methodNotAllowed(httpHeaders, security, uriInfo, configuration);
+            @Context Configuration configuration) {
+        return methodNotAllowed(httpHeaders, security, configuration);
     }
 
     @DELETE
     public Response delete(@Context HttpHeaders httpHeaders, @Context SecurityContext security,
-            @Context UriInfo uriInfo, @Context Configuration configuration) {
-        return methodNotAllowed(httpHeaders, security, uriInfo, configuration);
+            @Context Configuration configuration) {
+        return methodNotAllowed(httpHeaders, security, configuration);
     }
 
-    private static Response methodNotAllowed(HttpHeaders httpHeaders, SecurityContext security, UriInfo uriInfo,
+    private static Response methodNotAllowed(HttpHeaders httpHeaders, SecurityContext security,
             Configuration configuration) {
         Optional<JaxRs.Target> target = JaxRs.target(configuration);
         if (target.isEmpty()) {
@@ -124,7 +123,7 @@ public class McpEndpoint {
         }
         Function<String, List<String>> headers = JaxRs.headers(httpHeaders.getRequestHeaders());
         McpTransport.Screening screening = target.get().transport().screen(target.get().server(),
-                JaxRs.first(headers, "Origin"), JaxRs.caller(security, headers, uriInfo));
+                JaxRs.first(headers, "Origin"), JaxRs.caller(security, headers));
         return JaxRs.response(screening instanceof McpTransport.Reply rejected ? rejected.reply()
                 : new HttpReply(405, Map.of(HttpHeaders.ALLOW, "POST"), null));
     }

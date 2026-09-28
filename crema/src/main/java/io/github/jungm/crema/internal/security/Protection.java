@@ -18,7 +18,7 @@ import io.github.jungm.crema.internal.config.ServerSettings;
  * @param server the MCP Server's name for messages
  * @param issuer the Authorization Server's issuer identifier, which tokens' {@code iss} must equal
  * @param jwksUri the Authorization Server's JWK set URL, or {@code null} to read it from the issuer's metadata
- * @param resource the Resource Identifier, or {@code null} to derive it from each request
+ * @param resource the Resource Identifier: the MCP Endpoint's public URL, which tokens' {@code aud} must contain
  * @param rolesClaim the dotted path of the claim that holds the caller's roles
  * @param principalClaim the dotted path of the claim that holds the caller's name
  * @param clockSkewSeconds the tolerated clock skew for {@code exp} and {@code nbf}
@@ -32,6 +32,11 @@ public record Protection(String server, String issuer, URI jwksUri, String resou
     public static final String PRINCIPAL_CLAIM = "principal-claim";
     public static final String CLOCK_SKEW_SECONDS = "clock-skew-seconds";
     public static final String RESOURCE = "resource";
+
+    /**
+     * The path of the Protected Resource Metadata (RFC 9728), relative to the Resource Identifier.
+     */
+    static final String METADATA_PATH = "/.well-known/oauth-protected-resource";
 
     static final String DEFAULT_ROLES_CLAIM = "groups";
     static final String DEFAULT_PRINCIPAL_CLAIM = "sub";
@@ -72,8 +77,11 @@ public record Protection(String server, String issuer, URI jwksUri, String resou
         }
         URI jwksUri = config.get(prefix + JWKS_URI).map(String::trim)
                 .map(value -> checkUrl(value, prefix + JWKS_URI, where, false, problems)).orElse(null);
-        String resource = settings.resource() == null ? null : settings.resource().trim();
-        if (resource != null) {
+        String resource = settings.resource() == null ? "" : settings.resource().trim();
+        if (resource.isEmpty()) {
+            problems.add(where + " is protected by @RolesAllowed or @DenyAll, but " + prefix + RESOURCE
+                    + " isn't set; set it to the MCP Endpoint's public URL, which tokens must be issued for");
+        } else {
             checkResource(resource, prefix + RESOURCE, where, problems);
         }
         int clockSkew = config.get(prefix + CLOCK_SKEW_SECONDS).map(value -> {
@@ -92,14 +100,22 @@ public record Protection(String server, String issuer, URI jwksUri, String resou
         if (problems.size() > before) {
             return Optional.empty();
         }
-        if (resource == null) {
-            LOG.info(where + ": " + prefix + RESOURCE + " isn't set, so the Resource Identifier that tokens must "
-                    + "be issued for is derived from each request's URL. Set it to the MCP Endpoint's public URL.");
-        }
         return Optional.of(new Protection(settings.wireName(), issuer.get(), jwksUri, resource,
                 config.get(prefix + ROLES_CLAIM).map(String::trim).orElse(DEFAULT_ROLES_CLAIM),
                 config.get(prefix + PRINCIPAL_CLAIM).map(String::trim).orElse(DEFAULT_PRINCIPAL_CLAIM),
                 clockSkew));
+    }
+
+    /**
+     * The URL of the Protected Resource Metadata, {@code <resource>/.well-known/oauth-protected-resource}: where
+     * the MCP Endpoint serves it, since the Resource Identifier is the MCP Endpoint's public URL.
+     */
+    public String resourceMetadataUrl() {
+        String base = resource;
+        while (base.endsWith("/")) {
+            base = base.substring(0, base.length() - 1);
+        }
+        return base + METADATA_PATH;
     }
 
     /**
@@ -139,10 +155,11 @@ public record Protection(String server, String issuer, URI jwksUri, String resou
         try {
             URI uri = new URI(value);
             String scheme = uri.getScheme() == null ? "" : uri.getScheme().toLowerCase(Locale.ROOT);
-            if (!uri.isAbsolute() || uri.getHost() == null || uri.getRawFragment() != null
+            if (!uri.isAbsolute() || uri.getHost() == null || uri.getRawUserInfo() != null
+                    || uri.getRawQuery() != null || uri.getRawFragment() != null
                     || !scheme.equals("https") && !scheme.equals("http")) {
                 problems.add(where + ": " + key + " must be the MCP Endpoint's absolute http(s) URL without "
-                        + "fragment, but is '" + value + "'");
+                        + "user info, query or fragment, but is '" + value + "'");
             }
         } catch (URISyntaxException e) {
             problems.add(where + ": " + key + " isn't a valid URL: " + e.getMessage());

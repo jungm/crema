@@ -48,13 +48,13 @@ class BearerTokenTest {
     }
 
     private Fixture fixture(boolean discover) {
-        fixture = new Fixture(Fixture.protection(as, "default", null, "groups", discover),
+        fixture = new Fixture(Fixture.protection(as, "default", ENDPOINT, "groups", discover),
                 Fixture.protection(as, "other", OTHER_ENDPOINT, "groups", discover));
         return fixture;
     }
 
     private Exchange whoami(String authorization) {
-        return fixture.callTool(fixture.protectedServer, RequestCaller.withAuthorization(ENDPOINT, authorization),
+        return fixture.callTool(fixture.protectedServer, RequestCaller.withAuthorization(authorization),
                 "whoami");
     }
 
@@ -80,7 +80,7 @@ class BearerTokenTest {
     @Test
     void missingAuthorizationGetsAChallenge() {
         fixture(false);
-        Exchange exchange = fixture.callTool(fixture.protectedServer, RequestCaller.anonymous(ENDPOINT), "everyone");
+        Exchange exchange = fixture.callTool(fixture.protectedServer, RequestCaller.anonymous(), "everyone");
         assertEquals(401, exchange.status());
         assertEquals(CHALLENGE, exchange.challenge());
         assertNull(exchange.message());
@@ -90,7 +90,7 @@ class BearerTokenTest {
     void everyMethodNeedsAToken() {
         fixture(false);
         for (String method : List.of("server/discover", "tools/list", "prompts/list")) {
-            assertEquals(401, fixture.call(fixture.protectedServer, RequestCaller.anonymous(ENDPOINT), method, "",
+            assertEquals(401, fixture.call(fixture.protectedServer, RequestCaller.anonymous(), method, "",
                     null).status(), method);
         }
     }
@@ -118,7 +118,7 @@ class BearerTokenTest {
         assertEquals(INVALID_TOKEN, whoami("Bearer").challenge());
         assertEquals(INVALID_TOKEN, whoami("Bearer   ").challenge());
         Exchange twice = fixture.callTool(fixture.protectedServer,
-                RequestCaller.withAuthorization(ENDPOINT, "Bearer " + as.token(ENDPOINT), "Bearer x"), "whoami");
+                RequestCaller.withAuthorization("Bearer " + as.token(ENDPOINT), "Bearer x"), "whoami");
         assertEquals(401, twice.status());
         assertEquals(INVALID_TOKEN, twice.challenge());
     }
@@ -181,24 +181,24 @@ class BearerTokenTest {
         fixture(false);
         String otherToken = as.token(OTHER_ENDPOINT);
         assertInvalid(otherToken);
-        assertEquals(200, fixture.callTool(fixture.otherServer, RequestCaller.bearer(OTHER_ENDPOINT, otherToken),
+        assertEquals(200, fixture.callTool(fixture.otherServer, RequestCaller.bearer(otherToken),
                 "other").status());
-        Exchange mine = fixture.callTool(fixture.otherServer, RequestCaller.bearer(OTHER_ENDPOINT,
-                as.token(ENDPOINT)), "other");
+        Exchange mine = fixture.callTool(fixture.otherServer, RequestCaller.bearer(as.token(ENDPOINT)), "other");
         assertEquals(401, mine.status());
         assertEquals("Bearer error=\"invalid_token\", resource_metadata=\"" + OTHER_ENDPOINT
                 + "/.well-known/oauth-protected-resource\"", mine.challenge());
     }
 
     @Test
-    void derivedResourceIdentifierFollowsTheRequest() {
-        fixture(false);
-        String token = as.token(ENDPOINT);
-        Exchange elsewhere = fixture.callTool(fixture.protectedServer,
-                RequestCaller.bearer("https://elsewhere.test/app/mcp", token), "whoami");
-        assertEquals(401, elsewhere.status());
-        assertEquals("Bearer error=\"invalid_token\", resource_metadata=\"https://elsewhere.test/app/mcp"
-                + "/.well-known/oauth-protected-resource\"", elsewhere.challenge());
+    void theConfiguredResourceIsTheAudienceAndLocatesTheMetadata() {
+        String resource = "https://public.test/ctx/mcp/";
+        fixture = new Fixture(Fixture.protection(as, "default", resource, "groups", false),
+                Fixture.protection(as, "other", OTHER_ENDPOINT, "groups", false));
+        assertEquals(200, whoamiWithToken(as.token(resource)).status());
+        Exchange withoutSlash = whoamiWithToken(as.token("https://public.test/ctx/mcp"));
+        assertEquals(401, withoutSlash.status());
+        assertEquals("Bearer error=\"invalid_token\", resource_metadata=\"https://public.test/ctx/mcp"
+                + "/.well-known/oauth-protected-resource\"", withoutSlash.challenge());
     }
 
     @Test

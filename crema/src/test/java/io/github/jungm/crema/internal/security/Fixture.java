@@ -283,28 +283,26 @@ final class Fixture {
     static final class RequestCaller implements Caller {
 
         private final Map<String, List<String>> headers = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
-        private final String endpointUrl;
         private final Principal principal;
         private final Set<String> roles;
 
-        RequestCaller(String endpointUrl, Principal principal, Set<String> roles) {
-            this.endpointUrl = endpointUrl;
+        RequestCaller(Principal principal, Set<String> roles) {
             this.principal = principal;
             this.roles = roles;
         }
 
-        static RequestCaller anonymous(String endpointUrl) {
-            return new RequestCaller(endpointUrl, null, Set.of());
+        static RequestCaller anonymous() {
+            return new RequestCaller(null, Set.of());
         }
 
-        static RequestCaller withAuthorization(String endpointUrl, String... authorization) {
-            RequestCaller caller = anonymous(endpointUrl);
+        static RequestCaller withAuthorization(String... authorization) {
+            RequestCaller caller = anonymous();
             caller.headers.put("Authorization", List.of(authorization));
             return caller;
         }
 
-        static RequestCaller bearer(String endpointUrl, String token) {
-            return withAuthorization(endpointUrl, "Bearer " + token);
+        static RequestCaller bearer(String token) {
+            return withAuthorization("Bearer " + token);
         }
 
         @Override
@@ -320,11 +318,6 @@ final class Fixture {
         @Override
         public boolean isUserInRole(String role) {
             return roles.contains(role);
-        }
-
-        @Override
-        public String endpointUrl() {
-            return endpointUrl;
         }
     }
 }

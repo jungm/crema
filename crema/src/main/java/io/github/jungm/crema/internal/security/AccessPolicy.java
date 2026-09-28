@@ -37,7 +37,7 @@ public interface AccessPolicy {
         }
 
         @Override
-        public Optional<JsonObject> resourceMetadata(McpServerModel server, Caller caller) {
+        public Optional<JsonObject> resourceMetadata(McpServerModel server) {
             return Optional.empty();
         }
     };
@@ -72,11 +72,10 @@ public interface AccessPolicy {
     boolean isPrivate(McpServerModel server);
 
     /**
-     * The Protected Resource Metadata (RFC 9728) of a protected MCP Server; empty for other MCP Servers.
-     *
-     * @param caller the unauthenticated caller of the metadata document, which tells the MCP Endpoint URL
+     * The Protected Resource Metadata (RFC 9728) of a protected MCP Server; empty for other MCP Servers. It
+     * doesn't depend on the request.
      */
-    Optional<JsonObject> resourceMetadata(McpServerModel server, Caller caller);
+    Optional<JsonObject> resourceMetadata(McpServerModel server);
 
     /**
      * The outcome of {@link #authenticate}.
