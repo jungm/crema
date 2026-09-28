@@ -106,7 +106,10 @@ class ReturnConversionTest {
         assertResource("[{\"uri\":\"x://a\",\"mimeType\":\"image/png\",\"blob\":\"aGk=\"}]",
                 "hi".getBytes(StandardCharsets.UTF_8), "image/png");
         assertResource("[{\"uri\":\"x://a\",\"mimeType\":\"application/json\",\"text\":\"{\\\"x\\\":1,\\\"y\\\":2}\"}]",
-                new Point(1, 2), "text/plain");
+                new Point(1, 2), null);
+        assertResource("[{\"uri\":\"x://a\",\"mimeType\":\"application/vnd.point+json\",\"text\":\"{\\\"x\\\":1,\\\"y\\\":2}\"}]",
+                new Point(1, 2), "application/vnd.point+json");
+        assertResource("[]", List.of(), "text/plain");
         assertResource("[{\"uri\":\"x://other\",\"text\":\"t\"}]", TextResourceContents.of("x://other", "t"), null);
         assertResource("[{\"uri\":\"x://1\",\"text\":\"1\"},{\"uri\":\"x://2\",\"text\":\"2\"}]",
                 List.of(TextResourceContents.of("x://1", "1"), TextResourceContents.of("x://2", "2")), null);

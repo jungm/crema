@@ -98,6 +98,10 @@ final class Invocations {
         } catch (RuntimeException e) {
             throw internal(target.feature(), e);
         }
+        if (response.getContents() == null || response.getContents().isEmpty()) {
+            // the spec forbids empty contents; a resource without any is one that doesn't exist
+            throw notFound(uri);
+        }
         JsonObjectBuilder result = Json.object()
                 .add("contents", ProtocolJson.resourceContents(response, mapping.jsonb()::toJsonValue));
         addMeta(result, response.metadata(), call);

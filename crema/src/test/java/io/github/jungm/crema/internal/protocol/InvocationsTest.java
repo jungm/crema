@@ -13,6 +13,7 @@ import java.util.concurrent.CompletionStage;
 import org.junit.jupiter.api.Test;
 import org.mcpjava.server.prompts.Prompt;
 import org.mcpjava.server.resources.Resource;
+import org.mcpjava.server.resources.ResourceContents;
 import org.mcpjava.server.resources.ResourceTemplate;
 import org.mcpjava.server.tools.Tool;
 
@@ -78,6 +79,11 @@ class InvocationsTest {
             return "doc " + name;
         }
 
+        @Resource(uri = "test://empty")
+        public List<ResourceContents> empty() {
+            return List.of();
+        }
+
         @Prompt
         public String promptError() {
             throw new LinkageError("secret detail");
@@ -137,6 +143,13 @@ class InvocationsTest {
                 .add("arguments", Json.object().addNull("text").addNull("json"))));
         assertFalse(result.containsKey("isError") && result.getBoolean("isError"), result::toString);
         assertEquals("empty null", result.getJsonArray("content").getJsonObject(0).getString("text"));
+    }
+
+    @Test
+    void resourcesWithoutContentsDontExist() {
+        JsonObject error = handle("resources/read", Json.object().add("uri", "test://empty")).getJsonObject("error");
+        assertEquals(-32602, error.getInt("code"));
+        assertEquals("Resource not found", error.getString("message"));
     }
 
     static McpServerModel server(Class<?> type, Object instance) {
