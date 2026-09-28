@@ -1,6 +1,5 @@
 package io.github.jungm.crema.internal.config;
 
-import java.util.Map;
 import java.util.Optional;
 
 /**
@@ -27,13 +26,6 @@ public interface ConfigLookup {
      */
     static ConfigLookup none() {
         return key -> Optional.empty();
-    }
-
-    /**
-     * A lookup backed by a map, for tests.
-     */
-    static ConfigLookup of(Map<String, String> values) {
-        return key -> Optional.ofNullable(values.get(key)).filter(value -> !value.isBlank());
     }
 
     /**

@@ -374,7 +374,7 @@ class McpTransportTest {
         assertEquals("2.0", body.getString("jsonrpc"));
         assertTrue(body.containsKey("error"));
 
-        McpTransport anyOrigin = transport(new CremaSettings(List.of("*"), 0), AccessPolicy.PERMIT_ALL);
+        McpTransport anyOrigin = transport(new CremaSettings(List.of("*"), 0, CremaSettings.defaults().maxRequestBytes()), AccessPolicy.PERMIT_ALL);
         assertEquals(new McpTransport.Admitted(Caller.ANONYMOUS),
                 anyOrigin.screen(SERVER, "http://evil.example.com", Caller.ANONYMOUS));
     }
