@@ -11,11 +11,13 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.TimeUnit;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
 import com.nimbusds.jose.JOSEException;
 import com.nimbusds.jose.KeySourceException;
+import com.nimbusds.jose.jwk.source.RateLimitReachedException;
 import com.nimbusds.jose.proc.BadJOSEException;
 import com.nimbusds.jwt.JWTClaimsSet;
 
@@ -45,8 +47,12 @@ public final class CremaAccessPolicy implements AccessPolicy, Closeable {
 
     private final Map<Class<?>, ServerAccess> servers = new LinkedHashMap<>();
 
+    /**
+     * @param failures lets through one warning per minute about failures to validate tokens that aren't the
+     *        token's fault, such as unavailable keys
+     */
     private record ServerAccess(Protection protection, TokenValidator validator,
-            Map<FeatureMethod, AccessRule> rules, boolean isPrivate) {
+            Map<FeatureMethod, AccessRule> rules, boolean isPrivate, LogText.Throttle failures) {
     }
 
     /**
@@ -86,7 +92,8 @@ public final class CremaAccessPolicy implements AccessPolicy, Closeable {
             Protection protection = protections.get(server.application());
             TokenValidator validator = protection == null ? null : new TokenValidator(protection, tuning);
             policy.servers.put(server.application(),
-                    new ServerAccess(protection, validator, rules, protection != null || restricted));
+                    new ServerAccess(protection, validator, rules, protection != null || restricted,
+                            new LogText.Throttle(1, TimeUnit.MINUTES)));
         }
         return new Result(policy, List.copyOf(problems));
     }
@@ -193,18 +200,21 @@ public final class CremaAccessPolicy implements AccessPolicy, Closeable {
         JWTClaimsSet claims;
         try {
             claims = access.validator().validate(token, resource);
+        } catch (RateLimitReachedException e) {
+            LOG.fine(() -> "Rejected a bearer token for MCP Server '" + protection.server() + "': no key of issuer "
+                    + protection.issuer() + " matches it, and the keys were retrieved too recently to retrieve "
+                    + "them again");
+            return Optional.empty();
         } catch (KeySourceException e) {
-            LOG.log(Level.WARNING, "Rejected a bearer token for MCP Server '" + protection.server()
-                    + "' because the keys of issuer " + protection.issuer() + " aren't available: "
-                    + e.getMessage(), e);
+            failure(access, "the keys of issuer " + protection.issuer() + " aren't available: "
+                    + LogText.clean(e.getMessage()));
             return Optional.empty();
         } catch (ParseException | BadJOSEException | JOSEException e) {
             LOG.fine(() -> "Rejected a bearer token for MCP Server '" + protection.server() + "' (resource "
-                    + resource + "): " + e.getMessage());
+                    + resource + "): " + LogText.clean(e.getMessage()));
             return Optional.empty();
         } catch (RuntimeException e) {
-            LOG.log(Level.WARNING, "Rejected a bearer token for MCP Server '" + protection.server()
-                    + "' because validating it failed", e);
+            failure(access, "validating it failed: " + e.getClass().getName() + ": " + LogText.clean(e.getMessage()));
             return Optional.empty();
         }
         Map<String, Object> values = claims.getClaims();
@@ -216,6 +226,20 @@ public final class CremaAccessPolicy implements AccessPolicy, Closeable {
         }
         return Optional.of(new TokenCaller(server.application(), caller, new CallerPrincipal(principal, values),
                 TokenCaller.roles(TokenCaller.claim(values, protection.rolesClaim()))));
+    }
+
+    /**
+     * Logs why a token was rejected for a reason that isn't the token's fault: as a warning without stack trace
+     * at most once per minute and MCP Server, since any client can trigger it, and else at {@code FINE}.
+     */
+    private static void failure(ServerAccess access, String reason) {
+        String message = "Rejected a bearer token for MCP Server '" + access.protection().server() + "' because "
+                + reason;
+        if (access.failures().permit()) {
+            LOG.warning(message + " (further such warnings are suppressed for a minute)");
+        } else {
+            LOG.fine(message);
+        }
     }
 
     private ServerAccess access(McpServerModel server) {
