@@ -85,7 +85,8 @@ class FeatureScannerTest {
             return "hello";
         }
 
-        @ResourceTemplate(name = "row", uriTemplate = "db:///{table}/{id}")
+        @ResourceTemplate(name = "row", uriTemplate = "db:///{table}/{id}",
+                annotations = @Resource.Annotations(lastModified = "2026-01-01T02:00:00+02:00"))
         public String row(String id, String table) {
             return null;
         }
@@ -144,6 +145,7 @@ class FeatureScannerTest {
                  "size":5,"icons":[{"src":"https://example.com/RESOURCE/text.png","mimeType":"image/png"}]}
                 """), byName.get("text"));
         assertEquals("db:///{table}/{id}", byName.get("row").getString("uriTemplate"));
+        assertEquals(Json.parse("{\"lastModified\":\"2026-01-01T00:00:00Z\"}"), byName.get("row").get("annotations"));
         assertEquals(Json.parse("""
                 [{"name":"code","title":"Code","description":"The code","required":true},
                  {"name":"language","required":false}]
@@ -299,6 +301,16 @@ class FeatureScannerTest {
             return null;
         }
 
+        @Resource(uri = "test://y", annotations = @Resource.Annotations(priority = -0.5))
+        public String negativePriority() {
+            return null;
+        }
+
+        @Resource(uri = "test://y", annotations = @Resource.Annotations(lastModified = "2026-01-01T00:00:00"))
+        public String localLastModified() {
+            return null;
+        }
+
         @Tool
         @MetaField(prefix = "com.example/", name = "x", value = "1")
         @MetaField(prefix = "com.example/", name = "x", value = "2")
@@ -342,6 +354,8 @@ class FeatureScannerTest {
         assertProblem(problems, prefix + "invalidBoolean()", "neither 'true' nor 'false'");
         assertProblem(problems, prefix + "invalidJson()", "isn't valid JSON");
         assertProblem(problems, prefix + "invalidPriority()", "between 0.0 and 1.0");
+        assertProblem(problems, prefix + "negativePriority()", "between 0.0 and 1.0");
+        assertProblem(problems, prefix + "localLastModified()", "isn't an ISO 8601 date-time with offset");
         assertProblem(problems, prefix + "duplicateMetaField()",
                 "more than one @MetaField has the key 'com.example/x'");
     }

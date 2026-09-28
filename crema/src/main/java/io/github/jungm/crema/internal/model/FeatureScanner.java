@@ -6,14 +6,13 @@ import java.lang.reflect.Modifier;
 import java.lang.reflect.Parameter;
 import java.lang.reflect.Type;
 import java.security.Principal;
-import java.time.format.DateTimeFormatter;
+import java.time.OffsetDateTime;
 import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Locale;
 import java.util.Set;
 import java.util.concurrent.CompletionStage;
 import java.util.stream.Collectors;
@@ -30,6 +29,7 @@ import org.mcpjava.server.completion.CompletePrompt;
 import org.mcpjava.server.completion.CompleteResourceTemplate;
 import org.mcpjava.server.completion.CompletionContext;
 import org.mcpjava.server.completion.CompletionResult;
+import org.mcpjava.server.content.Annotations;
 import org.mcpjava.server.progress.Progress;
 import org.mcpjava.server.prompts.Prompt;
 import org.mcpjava.server.prompts.PromptArg;
@@ -414,32 +414,38 @@ public final class FeatureScanner {
         return result.isEmpty() ? null : result;
     }
 
+    /**
+     * The {@code annotations} of a Resource or Resource Template definition, or {@code null} when none is set. They
+     * are built with the SPI's {@link Annotations} builder and encoded like the annotations of values Feature
+     * Methods return, so both follow the same rules: {@code priority} is {@code -1} (unset) or between 0.0 and
+     * 1.0, and {@code lastModified} is an ISO 8601 date-time with offset, such as {@code 2025-01-12T15:00:58Z}.
+     */
     private static JsonObject resourceAnnotations(Resource.Annotations annotations) {
-        JsonObjectBuilder json = Json.object();
+        Annotations.Builder builder = Annotations.builder();
+        boolean set = false;
         if (annotations.audience().length > 0) {
-            JsonArrayBuilder audience = Json.FACTORY.createArrayBuilder();
-            Arrays.stream(annotations.audience()).distinct()
-                    .forEach(role -> audience.add(role.name().toLowerCase(Locale.ROOT)));
-            json.add("audience", audience);
+            builder.setAudience(annotations.audience());
+            set = true;
         }
-        if (annotations.priority() >= 0) {
-            if (annotations.priority() > 1) {
-                throw new IllegalArgumentException(
-                        "annotations.priority must be between 0.0 and 1.0, not " + annotations.priority());
+        if (annotations.priority() != -1) {
+            try {
+                builder.setPriority(annotations.priority());
+            } catch (IllegalArgumentException e) {
+                throw new IllegalArgumentException("annotations.priority must be -1 (unset) or between 0.0 and 1.0, "
+                        + "not " + annotations.priority());
             }
-            json.add("priority", annotations.priority());
+            set = true;
         }
         if (!annotations.lastModified().isEmpty()) {
             try {
-                DateTimeFormatter.ISO_DATE_TIME.parse(annotations.lastModified());
+                builder.setLastModified(OffsetDateTime.parse(annotations.lastModified()).toInstant());
             } catch (DateTimeParseException e) {
                 throw new IllegalArgumentException("annotations.lastModified '" + annotations.lastModified()
-                        + "' isn't an ISO 8601 date-time");
+                        + "' isn't an ISO 8601 date-time with offset, such as 2025-01-12T15:00:58Z");
             }
-            json.add("lastModified", annotations.lastModified());
+            set = true;
         }
-        JsonObject result = json.build();
-        return result.isEmpty() ? null : result;
+        return set ? ProtocolJson.annotations(builder.build()) : null;
     }
 
     private static JsonObjectBuilder describe(JsonObjectBuilder json, String title, String description) {
