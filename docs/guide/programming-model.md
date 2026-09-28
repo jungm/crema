@@ -24,8 +24,8 @@ Every parameter that isn't an Injected Parameter is an Argument supplied by the 
 - A missing or unbindable Tool Argument produces a Tool result with `isError: true` and a message the model can act
   on.
 - Resource Template variables (`{id}`) bind to the `String` parameter of the same name. Values are percent-decoded,
-  and values that are empty, contain `/` or `\`, or are `.` or `..` don't match, so a value is safe to use as a single
-  path segment.
+  and values that are empty, contain `/` or `\`, start with a Windows drive such as `C:`, or are `.` or `..` don't
+  match, so a value is safe to use as a single path segment.
 
 ## Injected Parameters
 
