@@ -8,6 +8,7 @@ public class BindingException extends RuntimeException {
 
     private static final long serialVersionUID = 1L;
 
+    /** Where the offending value is inside the bound value, such as {@code [2].name}; empty for the value itself. */
     private final String path;
     private final String detail;
 
@@ -23,21 +24,6 @@ public class BindingException extends RuntimeException {
         super(path.isEmpty() ? detail : path + ": " + detail, cause);
         this.path = path;
         this.detail = detail;
-    }
-
-    /**
-     * Returns the location of the offending value relative to the bound value, such as {@code [2].name}, or the
-     * empty string if the bound value itself is the offending value.
-     */
-    public String path() {
-        return path;
-    }
-
-    /**
-     * Returns the message without the path.
-     */
-    public String detail() {
-        return detail;
     }
 
     /**

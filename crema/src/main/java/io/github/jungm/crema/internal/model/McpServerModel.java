@@ -92,10 +92,6 @@ public final class McpServerModel {
         return templates.values();
     }
 
-    public Optional<Feature.ResourceTemplate> resourceTemplate(String name) {
-        return Optional.ofNullable(templates.get(name));
-    }
-
     public Collection<Feature.Prompt> prompts() {
         return prompts.values();
     }

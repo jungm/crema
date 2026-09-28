@@ -97,13 +97,6 @@ class JsonbBridgeTest {
     }
 
     @Test
-    void toJsonValueWithDeclaredType() {
-        Type type = new TypeLiteral<List<Optional<String>>>() { }.type();
-        assertEquals(Json.createArrayBuilder().add("a").addNull().build(),
-                bridge.toJsonValue(java.util.Arrays.asList(Optional.of("a"), Optional.empty()), type));
-    }
-
-    @Test
     void fromJsonValue() {
         assertEquals("a", bridge.fromJsonValue(Json.createValue("a"), String.class));
         assertEquals(5, bridge.fromJsonValue(Json.createValue(5), int.class));

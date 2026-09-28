@@ -442,7 +442,7 @@ class McpTransportTest {
                 List.of())), scanner.features(), settings);
         assertEquals(List.of(), result.problems());
         return new McpTransport(result.registry(),
-                new Dispatcher(new Services(MAPPING, ContentEncoders.NONE, access)));
+                new Dispatcher(new Services(MAPPING, new ContentEncoders(List::of), access)));
     }
 
     private static Exchange call(String method, String params, String name) {

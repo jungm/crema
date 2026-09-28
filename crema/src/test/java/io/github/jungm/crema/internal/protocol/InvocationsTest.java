@@ -103,7 +103,7 @@ class InvocationsTest {
 
     private static final Mapping MAPPING = Mapping.create();
     private static final Dispatcher DISPATCHER = new Dispatcher(
-            new Services(MAPPING, ContentEncoders.NONE, AccessPolicy.PERMIT_ALL));
+            new Services(MAPPING, new ContentEncoders(List::of), AccessPolicy.PERMIT_ALL));
     private static final McpServerModel SERVER = server(Features.class, new Features());
 
     @Test

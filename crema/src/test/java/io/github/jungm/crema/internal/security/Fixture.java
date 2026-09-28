@@ -230,7 +230,7 @@ final class Fixture {
         assertEquals(List.of(), result.problems());
         policy = result.policy();
         transport = new McpTransport(registry.registry(),
-                new Dispatcher(new Services(MAPPING, ContentEncoders.NONE, policy)));
+                new Dispatcher(new Services(MAPPING, new ContentEncoders(List::of), policy)));
         protectedServer = transport.server(ProtectedApp.class).orElseThrow();
         otherServer = transport.server(OtherApp.class).orElseThrow();
         openServer = transport.server(OpenApp.class).orElseThrow();

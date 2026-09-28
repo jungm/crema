@@ -83,11 +83,10 @@ public final class ProgressImpl implements Progress {
                 .add("params", params).build());
     }
 
-    private ProgressToken requireToken() {
+    private void requireToken() {
         if (token == null) {
             throw new IllegalStateException("The request has no progress token");
         }
-        return token;
     }
 
     private final class NotificationBuilder implements ProgressNotification.Builder {

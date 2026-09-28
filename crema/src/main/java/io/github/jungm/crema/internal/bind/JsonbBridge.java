@@ -77,16 +77,6 @@ public final class JsonbBridge implements AutoCloseable {
     }
 
     /**
-     * Serializes a value with JSON-B, using {@code type} as its declared type.
-     *
-     * @throws JsonbException if the value can't be serialized
-     */
-    public JsonValue toJsonValue(Object value, Type type) {
-        JsonValue direct = directJsonValue(value);
-        return direct != null ? direct : parse(jsonb.toJson(value, type));
-    }
-
-    /**
      * Serializes a value with JSON-B to JSON text.
      *
      * @throws JsonbException if the value can't be serialized

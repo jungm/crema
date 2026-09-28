@@ -294,11 +294,10 @@ class ArgumentBinderTest {
     }
 
     @Test
-    void pathsAreExposed() {
+    void messagesStartWithThePath() {
         BindingException e = assertThrows(BindingException.class,
                 () -> bind("[{\"a\":[1,\"x\"]}]", new TypeLiteral<List<Map<String, List<Integer>>>>() { }.type()));
-        assertEquals("[0].a[1]", e.path());
-        assertEquals("expected an integer but got \"x\"", e.detail());
+        assertEquals("[0].a[1]: expected an integer but got \"x\"", e.getMessage());
     }
 
     private Object bind(String json, Type type) {
