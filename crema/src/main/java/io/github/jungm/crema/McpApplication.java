@@ -24,7 +24,9 @@ import jakarta.ws.rs.core.Application;
  * Crema enforces {@code @RolesAllowed}, {@code @PermitAll} and {@code @DenyAll} on Feature and Completion Methods:
  * the annotation on the method wins over the one on its declaring class, which wins over the one on the
  * {@code McpApplication} subclass. The role {@code "**"} means any authenticated caller. Features the caller may not
- * use are left out of lists, and invoking one is answered with {@code 403}.
+ * use are left out of lists, and invoking one is answered with {@code 403}. Leaving them out is a convenience for
+ * clients, not confidentiality: a client that knows a Feature's name can still tell that it exists from the
+ * {@code 403}.
  * <p>
  * An {@code McpApplication} subclass that carries {@code @RolesAllowed} or {@code @DenyAll} declares a
  * <em>protected</em> MCP Server: every request needs an OAuth bearer token issued for it, which Crema validates
@@ -40,6 +42,11 @@ import jakarta.ws.rs.core.Application;
  * <li>{@code principal-claim}: the claim with the caller's name, {@code sub} by default;</li>
  * <li>{@code clock-skew-seconds}: the tolerated clock skew, {@code 60} by default.</li>
  * </ul>
+ * Tokens must be JWTs signed with RSA or ECDSA. Their {@code typ} may be {@code at+jwt}, {@code JWT} or absent,
+ * because many Authorization Servers don't issue {@code at+jwt} access tokens; that an ID token or other JWT of
+ * the same Authorization Server isn't accepted as an access token relies on {@code resource}: a token is only
+ * accepted if its audience contains this MCP Server's Resource Identifier.
+ * <p>
  * Its Protected Resource Metadata (RFC 9728) is served at {@code <MCP Endpoint>/.well-known/oauth-protected-resource}
  * and advertised to clients as {@code <resource>/.well-known/oauth-protected-resource}.
  * On other MCP Servers, the caller and its roles are the ones the Runtime authenticated.
