@@ -23,7 +23,7 @@ import io.github.jungm.crema.internal.TestDeployment;
 /**
  * Deployment validation that needs all Features and MCP Servers.
  */
-class ServerRegistryTest {
+class McpServerRegistryTest {
 
     static class DefaultApp {
     }
@@ -117,7 +117,7 @@ class ServerRegistryTest {
 
     @Test
     void validRegistry() {
-        ServerRegistry.Result result = build(List.of(DefaultApp.class), A.class);
+        McpServerRegistry.Result result = build(List.of(DefaultApp.class), A.class);
         assertEquals(List.of(), result.problems());
         assertEquals(List.of(), result.warnings());
         McpServerModel server = result.registry().server(DefaultApp.class).orElseThrow();
@@ -155,7 +155,7 @@ class ServerRegistryTest {
 
     @Test
     void templatesOfTheSameShapeAreWarnings() {
-        ServerRegistry.Result result = build(List.of(DefaultApp.class), A.class, C.class);
+        McpServerRegistry.Result result = build(List.of(DefaultApp.class), A.class, C.class);
         assertEquals(List.of(), result.problems());
         assertEquals(1, result.warnings().size(), result.warnings().toString());
         String warning = result.warnings().get(0);
@@ -179,7 +179,7 @@ class ServerRegistryTest {
                 + "@McpServerInfo(name = ...)"), problems);
     }
 
-    private static ServerRegistry.Result build(List<Class<?>> applications, Class<?>... beans) {
+    private static McpServerRegistry.Result build(List<Class<?>> applications, Class<?>... beans) {
         TestDeployment deployment = TestDeployment.create();
         applications.forEach(deployment::application);
         for (Class<?> bean : beans) {

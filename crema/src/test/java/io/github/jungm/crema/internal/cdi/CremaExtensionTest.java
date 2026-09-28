@@ -31,7 +31,7 @@ import org.mcpjava.server.tools.Tool;
 
 import io.github.jungm.crema.internal.config.ConfigLookup;
 import io.github.jungm.crema.internal.config.CremaSettings;
-import io.github.jungm.crema.internal.config.ServerSettings;
+import io.github.jungm.crema.internal.config.McpServerSettings;
 import io.github.jungm.crema.internal.http.Headers;
 import io.github.jungm.crema.internal.http.HttpReply;
 import io.github.jungm.crema.internal.http.HttpRequest;
@@ -271,7 +271,7 @@ class CremaExtensionTest {
 
     private static CremaDeployment.Applications applications() {
         return new CremaDeployment.Applications(List.of(new CremaDeployment.Application(App.class,
-                ServerSettings.resolve(null, ConfigLookup.none(), Optional::empty), null)), CremaSettings.defaults());
+                McpServerSettings.resolve(null, ConfigLookup.none(), Optional::empty), null)), CremaSettings.defaults());
     }
 
     private static HttpReply call(McpTransport transport, McpServerModel server, String method, String name) {

@@ -10,7 +10,7 @@ import java.util.Optional;
 import io.github.jungm.crema.McpServerInfo;
 import io.github.jungm.crema.internal.config.ConfigLookup;
 import io.github.jungm.crema.internal.config.CremaSettings;
-import io.github.jungm.crema.internal.config.ServerSettings;
+import io.github.jungm.crema.internal.config.McpServerSettings;
 import io.github.jungm.crema.internal.http.McpTransport;
 import io.github.jungm.crema.internal.invoke.ContentEncoders;
 import io.github.jungm.crema.internal.invoke.Mapping;
@@ -18,7 +18,7 @@ import io.github.jungm.crema.internal.model.FeatureScanner;
 import io.github.jungm.crema.internal.model.IconLookup;
 import io.github.jungm.crema.internal.model.McpServerModel;
 import io.github.jungm.crema.internal.model.Scanning;
-import io.github.jungm.crema.internal.model.ServerRegistry;
+import io.github.jungm.crema.internal.model.McpServerRegistry;
 import io.github.jungm.crema.internal.protocol.Dispatcher;
 import io.github.jungm.crema.internal.protocol.Services;
 import io.github.jungm.crema.internal.security.CremaAccessPolicy;
@@ -26,7 +26,7 @@ import io.github.jungm.crema.internal.security.CremaAccessPolicy;
 /**
  * Assembles what the CDI extension and the servlet initializer assemble at deployment, without a Runtime: beans are
  * scanned into Features, {@code McpApplication} classes declare MCP Servers, and both are built into a
- * {@link ServerRegistry} and a {@link Dispatcher}.
+ * {@link McpServerRegistry} and a {@link Dispatcher}.
  * <p>
  * Applications are declared from their {@link McpServerInfo} (any class works, it needn't extend
  * {@code McpApplication}) without configuration unless {@link #application(Class, ConfigLookup)} supplies some.
@@ -37,7 +37,7 @@ public final class TestDeployment {
     /** One {@link Mapping} for all tests; creating a {@code Jsonb} is slow. */
     public static final Mapping MAPPING = Mapping.create();
 
-    private final List<ServerRegistry.Declaration> declarations = new ArrayList<>();
+    private final List<McpServerRegistry.Declaration> declarations = new ArrayList<>();
     private final FeatureScanner scanner = new FeatureScanner(MAPPING, IconLookup.reflective());
     private CremaSettings settings = CremaSettings.defaults();
     private ContentEncoders encoders = new ContentEncoders(List::of);
@@ -57,7 +57,7 @@ public final class TestDeployment {
     }
 
     public TestDeployment application(Class<?> application, ConfigLookup config) {
-        declarations.add(new ServerRegistry.Declaration(application, ServerSettings.resolve(
+        declarations.add(new McpServerRegistry.Declaration(application, McpServerSettings.resolve(
                 application.getAnnotation(McpServerInfo.class), config, Optional::empty), List.of()));
         return this;
     }
@@ -90,16 +90,16 @@ public final class TestDeployment {
     /**
      * Builds the registry, whatever problems it has. The beans must scan without problems.
      */
-    public ServerRegistry.Result build() {
+    public McpServerRegistry.Result build() {
         assertEquals(List.of(), scanner.problems(), "problems scanning the beans");
-        return ServerRegistry.build(declarations, scanner.features(), settings);
+        return McpServerRegistry.build(declarations, scanner.features(), settings);
     }
 
     /**
      * Builds the registry, which must have no problems.
      */
-    public ServerRegistry registry() {
-        ServerRegistry.Result result = build();
+    public McpServerRegistry registry() {
+        McpServerRegistry.Result result = build();
         assertEquals(List.of(), result.problems(), "problems building the registry");
         return result.registry();
     }
@@ -130,11 +130,11 @@ public final class TestDeployment {
      * The transport of a registry without problems, whose MCP Servers are all open.
      */
     public McpTransport transport() {
-        ServerRegistry registry = registry();
+        McpServerRegistry registry = registry();
         return new McpTransport(registry, dispatcher(openPolicy(registry)));
     }
 
-    private static CremaAccessPolicy openPolicy(ServerRegistry registry) {
+    private static CremaAccessPolicy openPolicy(McpServerRegistry registry) {
         CremaAccessPolicy.Result policy = CremaAccessPolicy.create(registry.servers(), Map.of());
         assertEquals(List.of(), policy.problems(), "problems building the access policy");
         return policy.policy();

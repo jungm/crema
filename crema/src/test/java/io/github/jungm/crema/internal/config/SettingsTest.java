@@ -27,9 +27,9 @@ class SettingsTest {
 
     @Test
     void annotationValuesApplyWithoutConfig() {
-        ServerSettings settings = ServerSettings.resolve(DefaultServer.class.getAnnotation(McpServerInfo.class),
+        McpServerSettings settings = McpServerSettings.resolve(DefaultServer.class.getAnnotation(McpServerInfo.class),
                 ConfigLookup.none(), () -> Optional.of("9.9"));
-        assertEquals(new ServerSettings(McpServer.DEFAULT, "Annotated", "1.0", "From the annotation", "Use it",
+        assertEquals(new McpServerSettings(McpServer.DEFAULT, "Annotated", "1.0", "From the annotation", "Use it",
                 "https://example.com", null), settings);
         assertEquals("default", settings.wireName());
     }
@@ -41,7 +41,7 @@ class SettingsTest {
                 "crema.default-server.version", "2.0",
                 "crema.default-server.website-url", "https://configured.example.com",
                 "crema.default-server.resource", "https://mcp.example.com/app/mcp"));
-        ServerSettings settings = ServerSettings.resolve(DefaultServer.class.getAnnotation(McpServerInfo.class),
+        McpServerSettings settings = McpServerSettings.resolve(DefaultServer.class.getAnnotation(McpServerInfo.class),
                 config, Optional::empty);
         assertEquals("Configured", settings.title());
         assertEquals("2.0", settings.version());
@@ -54,7 +54,7 @@ class SettingsTest {
     void namedServersUseTheirOwnKeys() {
         ConfigLookup config = MapConfig.of(Map.of("crema.servers.admin.description", "Configured",
                 "crema.default-server.description", "Wrong"));
-        ServerSettings settings = ServerSettings.resolve(AdminServer.class.getAnnotation(McpServerInfo.class),
+        McpServerSettings settings = McpServerSettings.resolve(AdminServer.class.getAnnotation(McpServerInfo.class),
                 config, Optional::empty);
         assertEquals("admin", settings.name());
         assertEquals("admin", settings.wireName());
@@ -64,8 +64,8 @@ class SettingsTest {
 
     @Test
     void versionFallsBackToManifestThenDefault() {
-        assertEquals("3.1", ServerSettings.resolve(null, ConfigLookup.none(), () -> Optional.of("3.1")).version());
-        ServerSettings settings = ServerSettings.resolve(null, ConfigLookup.none(), Optional::empty);
+        assertEquals("3.1", McpServerSettings.resolve(null, ConfigLookup.none(), () -> Optional.of("3.1")).version());
+        McpServerSettings settings = McpServerSettings.resolve(null, ConfigLookup.none(), Optional::empty);
         assertEquals("0.0.0", settings.version());
         assertNull(settings.title());
         assertNull(settings.instructions());
@@ -73,7 +73,7 @@ class SettingsTest {
 
     @Test
     void blankConfigValuesAreUnset() {
-        ServerSettings settings = ServerSettings.resolve(DefaultServer.class.getAnnotation(McpServerInfo.class),
+        McpServerSettings settings = McpServerSettings.resolve(DefaultServer.class.getAnnotation(McpServerInfo.class),
                 MapConfig.of(Map.of("crema.default-server.title", " ")), Optional::empty);
         assertEquals("Annotated", settings.title());
     }

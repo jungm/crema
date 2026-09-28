@@ -13,7 +13,7 @@ import io.github.jungm.crema.McpServerInfo;
  * absent values are {@code null}, except {@link #version()}, which falls back to the web application's
  * manifest version and then to {@code 0.0.0}.
  */
-public record ServerSettings(String name, String title, String version, String description, String instructions,
+public record McpServerSettings(String name, String title, String version, String description, String instructions,
         String websiteUrl, String resource) {
 
     private static final String FALLBACK_VERSION = "0.0.0";
@@ -22,12 +22,12 @@ public record ServerSettings(String name, String title, String version, String d
      * Resolves the settings of the MCP Server that {@code info} declares ({@code null} for the default MCP
      * Server without annotation).
      */
-    public static ServerSettings resolve(McpServerInfo info, ConfigLookup config,
+    public static McpServerSettings resolve(McpServerInfo info, ConfigLookup config,
             Supplier<Optional<String>> manifestVersion) {
         String name = info == null ? McpServer.DEFAULT : info.name();
         String prefix = keyPrefix(name);
         Function<String, Optional<String>> lookup = attribute -> config.get(prefix + attribute);
-        return new ServerSettings(name,
+        return new McpServerSettings(name,
                 value(lookup.apply("title"), info == null ? "" : info.title()),
                 value(lookup.apply("version"), info == null ? "" : info.version(), manifestVersion)
                         .orElse(FALLBACK_VERSION),

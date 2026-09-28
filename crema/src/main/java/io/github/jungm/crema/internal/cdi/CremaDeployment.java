@@ -13,13 +13,13 @@ import org.mcpjava.server.Icon;
 import org.mcpjava.server.IconProvider;
 
 import io.github.jungm.crema.internal.config.CremaSettings;
-import io.github.jungm.crema.internal.config.ServerSettings;
+import io.github.jungm.crema.internal.config.McpServerSettings;
 import io.github.jungm.crema.internal.http.McpTransport;
 import io.github.jungm.crema.internal.invoke.ContentEncoders;
 import io.github.jungm.crema.internal.invoke.Mapping;
 import io.github.jungm.crema.internal.model.Feature;
 import io.github.jungm.crema.internal.model.IconLookup;
-import io.github.jungm.crema.internal.model.ServerRegistry;
+import io.github.jungm.crema.internal.model.McpServerRegistry;
 import io.github.jungm.crema.internal.protocol.Dispatcher;
 import io.github.jungm.crema.internal.protocol.Services;
 import io.github.jungm.crema.internal.security.CremaAccessPolicy;
@@ -74,10 +74,10 @@ public final class CremaDeployment {
      * @param iconProvider the provider of {@code @Icons} on the subclass, or {@code null}
      * @param protection the protection of its MCP Server, or {@code null} if it isn't protected
      */
-    public record Application(Class<?> type, ServerSettings settings, Class<? extends IconProvider> iconProvider,
+    public record Application(Class<?> type, McpServerSettings settings, Class<? extends IconProvider> iconProvider,
             Protection protection) {
 
-        public Application(Class<?> type, ServerSettings settings, Class<? extends IconProvider> iconProvider) {
+        public Application(Class<?> type, McpServerSettings settings, Class<? extends IconProvider> iconProvider) {
             this(type, settings, iconProvider, null);
         }
     }
@@ -197,7 +197,7 @@ public final class CremaDeployment {
 
     private static List<String> build() {
         List<String> problems = new ArrayList<>();
-        List<ServerRegistry.Declaration> declarations = new ArrayList<>();
+        List<McpServerRegistry.Declaration> declarations = new ArrayList<>();
         for (Application application : applications.applications()) {
             List<Icon> icons = List.of();
             if (application.iconProvider() != null) {
@@ -208,9 +208,9 @@ public final class CremaDeployment {
                     problems.add("McpApplication " + application.type().getName() + ": " + e.getMessage());
                 }
             }
-            declarations.add(new ServerRegistry.Declaration(application.type(), application.settings(), icons));
+            declarations.add(new McpServerRegistry.Declaration(application.type(), application.settings(), icons));
         }
-        ServerRegistry.Result result = ServerRegistry.build(declarations, catalog.features(),
+        McpServerRegistry.Result result = McpServerRegistry.build(declarations, catalog.features(),
                 applications.settings());
         problems.addAll(result.problems());
         result.warnings().forEach(LOG::warning);

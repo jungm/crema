@@ -11,7 +11,7 @@ import java.util.logging.Logger;
 
 import io.github.jungm.crema.internal.invoke.ProgressChannel;
 import io.github.jungm.crema.internal.model.McpServerModel;
-import io.github.jungm.crema.internal.model.ServerRegistry;
+import io.github.jungm.crema.internal.model.McpServerRegistry;
 import io.github.jungm.crema.internal.protocol.Dispatcher;
 import io.github.jungm.crema.internal.json.Json;
 import io.github.jungm.crema.internal.protocol.McpError;
@@ -36,11 +36,11 @@ public final class McpTransport {
     private static final String ORIGIN = "Origin";
     private static final String AUTHORIZATION = "Authorization";
 
-    private final ServerRegistry registry;
+    private final McpServerRegistry registry;
     private final Dispatcher dispatcher;
     private final OriginPolicy origins;
 
-    public McpTransport(ServerRegistry registry, Dispatcher dispatcher) {
+    public McpTransport(McpServerRegistry registry, Dispatcher dispatcher) {
         this.registry = registry;
         this.dispatcher = dispatcher;
         this.origins = new OriginPolicy(registry.settings().allowedOrigins());

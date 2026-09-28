@@ -13,18 +13,18 @@ import org.mcpjava.server.Icon;
 import org.mcpjava.server.McpServer;
 
 import io.github.jungm.crema.internal.config.CremaSettings;
-import io.github.jungm.crema.internal.config.ServerSettings;
+import io.github.jungm.crema.internal.config.McpServerSettings;
 import io.github.jungm.crema.internal.spi.ImplementationInfoImpl;
 
 /**
  * The MCP Servers of one application, keyed by the {@code McpApplication} subclass that declares each.
  */
-public final class ServerRegistry {
+public final class McpServerRegistry {
 
     private final Map<Class<?>, McpServerModel> servers;
     private final CremaSettings settings;
 
-    private ServerRegistry(Map<Class<?>, McpServerModel> servers, CremaSettings settings) {
+    private McpServerRegistry(Map<Class<?>, McpServerModel> servers, CremaSettings settings) {
         this.servers = servers;
         this.settings = settings;
     }
@@ -34,14 +34,14 @@ public final class ServerRegistry {
      *
      * @param icons the MCP Server's icons, from {@code @Icons} on the subclass
      */
-    public record Declaration(Class<?> application, ServerSettings settings, List<Icon> icons) {
+    public record Declaration(Class<?> application, McpServerSettings settings, List<Icon> icons) {
     }
 
     /**
      * The registry and the deployment problems found while building it. The registry is only usable if there are
      * no problems. Warnings name questionable but valid declarations.
      */
-    public record Result(ServerRegistry registry, List<String> problems, List<String> warnings) {
+    public record Result(McpServerRegistry registry, List<String> problems, List<String> warnings) {
     }
 
     /**
@@ -82,13 +82,13 @@ public final class ServerRegistry {
             List<Feature> bound = featuresByServer.getOrDefault(name, List.of());
             checkServer(name, bound, problems);
             checkTemplateShapes(name, bound, warnings);
-            ServerSettings s = declaration.settings();
+            McpServerSettings s = declaration.settings();
             servers.put(declaration.application(), new McpServerModel(declaration.application(),
                     ImplementationInfoImpl.of(s.wireName(), s.title(), s.version(), s.description(), s.websiteUrl(),
                             declaration.icons()),
                     s.instructions(), settings.listTtlMs(), bound));
         }
-        return new Result(new ServerRegistry(servers, settings), List.copyOf(problems), List.copyOf(warnings));
+        return new Result(new McpServerRegistry(servers, settings), List.copyOf(problems), List.copyOf(warnings));
     }
 
     /**
