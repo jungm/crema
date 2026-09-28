@@ -40,9 +40,6 @@
         <!-- Set by the Runtime profiles; without a profile the integration tests are skipped. -->
         <skipITs>true</skipITs>
         <it.runtime>none</it.runtime>
-        <it.ee11-mechanism-handler>false</it.ee11-mechanism-handler>
-        <it.login-config>true</it.login-config>
-        <it.mpjwt-with-mechanism>true</it.mpjwt-with-mechanism>
         <liberty.dir>${project.build.directory}/liberty</liberty.dir>
     </properties>
 
@@ -66,16 +63,6 @@
             <scope>test</scope>
         </dependency>
 
-        <!--
-            Jakarta Security 4.0 (EE 11) for the mechanism handler that WildFly needs; declared before the EE 10
-            Web Profile API so that its classes win on the compile classpath.
-        -->
-        <dependency>
-            <groupId>jakarta.security.enterprise</groupId>
-            <artifactId>jakarta.security.enterprise-api</artifactId>
-            <version>4.0.0</version>
-            <scope>provided</scope>
-        </dependency>
         <dependency>
             <groupId>jakarta.platform</groupId>
             <artifactId>jakarta.jakartaee-web-api</artifactId>
@@ -84,11 +71,6 @@
         <dependency>
             <groupId>org.eclipse.microprofile.config</groupId>
             <artifactId>microprofile-config-api</artifactId>
-            <scope>provided</scope>
-        </dependency>
-        <dependency>
-            <groupId>org.eclipse.microprofile.jwt</groupId>
-            <artifactId>microprofile-jwt-auth-api</artifactId>
             <scope>provided</scope>
         </dependency>
 
@@ -126,9 +108,6 @@
                     <systemPropertyVariables>
                         <arquillian.launch>${it.runtime}</arquillian.launch>
                         <crema.it.runtime>${it.runtime}</crema.it.runtime>
-                        <crema.it.ee11-mechanism-handler>${it.ee11-mechanism-handler}</crema.it.ee11-mechanism-handler>
-                        <crema.it.login-config>${it.login-config}</crema.it.login-config>
-                        <crema.it.mpjwt-with-mechanism>${it.mpjwt-with-mechanism}</crema.it.mpjwt-with-mechanism>
                         <crema.it.findings.dir>${project.build.directory}/findings</crema.it.findings.dir>
                         <it.tomee.http.port>${it.tomee.http.port}</it.tomee.http.port>
                         <it.tomee.stop.port>${it.tomee.stop.port}</it.tomee.stop.port>
@@ -176,8 +155,6 @@
             <properties>
                 <skipITs>false</skipITs>
                 <it.runtime>wildfly</it.runtime>
-                <!-- SmallRye JWT registers MP-JWT as a Jakarta Security mechanism bean; see crema-it/README.md. -->
-                <it.ee11-mechanism-handler>true</it.ee11-mechanism-handler>
             </properties>
             <dependencies>
                 <dependency>
@@ -222,12 +199,6 @@
             <properties>
                 <skipITs>false</skipITs>
                 <it.runtime>openliberty</it.runtime>
-                <!--
-                    Liberty rejects @LoginConfig next to a Jakarta Security mechanism, and without it the mechanism
-                    handles every request so MP-JWT never runs; see crema-it/README.md.
-                -->
-                <it.login-config>false</it.login-config>
-                <it.mpjwt-with-mechanism>false</it.mpjwt-with-mechanism>
                 <liberty.groupId>io.openliberty</liberty.groupId>
                 <liberty.artifactId>openliberty-runtime</liberty.artifactId>
                 <liberty.version>${openliberty.version}</liberty.version>
@@ -308,12 +279,6 @@
             <properties>
                 <skipITs>false</skipITs>
                 <it.runtime>websphere-liberty</it.runtime>
-                <!--
-                    Liberty rejects @LoginConfig next to a Jakarta Security mechanism, and without it the mechanism
-                    handles every request so MP-JWT never runs; see crema-it/README.md.
-                -->
-                <it.login-config>false</it.login-config>
-                <it.mpjwt-with-mechanism>false</it.mpjwt-with-mechanism>
                 <liberty.groupId>com.ibm.websphere.appserver.runtime</liberty.groupId>
                 <liberty.artifactId>wlp-jakartaee10</liberty.artifactId>
                 <liberty.version>${websphere-liberty.version}</liberty.version>
