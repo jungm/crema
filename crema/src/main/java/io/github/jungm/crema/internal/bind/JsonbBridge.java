@@ -14,13 +14,17 @@ import jakarta.json.JsonString;
 import jakarta.json.JsonValue;
 import jakarta.json.bind.Jsonb;
 import jakarta.json.bind.JsonbBuilder;
+import jakarta.json.bind.JsonbConfig;
 import jakarta.json.bind.JsonbException;
+import jakarta.json.bind.serializer.JsonbSerializer;
+import jakarta.json.bind.serializer.SerializationContext;
 import jakarta.json.spi.JsonProvider;
+import jakarta.json.stream.JsonGenerator;
 import jakarta.json.stream.JsonParser;
 
 /**
  * Converts between application values and JSON-P values with Crema's own {@link Jsonb} instance (default
- * configuration). Never uses the application's {@code Jsonb}.
+ * configuration, except that {@code BigDecimal} and {@code BigInteger} are always written as JSON numbers). Never uses the application's {@code Jsonb}.
  * <p>
  * Values whose JSON-B mapping is fixed by the specification (strings, booleans, boxed numbers,
  * {@code BigDecimal}/{@code BigInteger}, JSON-P values) are converted directly; everything else goes through
@@ -33,7 +37,39 @@ public final class JsonbBridge implements AutoCloseable {
 
     public JsonbBridge() {
         this.jsonProvider = JsonProvider.provider();
-        this.jsonb = JsonbBuilder.create();
+        this.jsonb = JsonbBuilder.create(new JsonbConfig()
+                .withSerializers(new BigDecimalSerializer(), new BigIntegerSerializer())
+                .setProperty(JOHNZON_BIG_DECIMAL_AS_STRING, false)
+                .setProperty(JOHNZON_BIG_INTEGER_AS_STRING, false));
+    }
+
+    /**
+     * Johnzon (TomEE) writes {@code BigDecimal} and {@code BigInteger} properties as JSON strings unless these
+     * properties are {@code false}, and then ignores {@link BigDecimalSerializer}. Other providers ignore unknown
+     * properties.
+     */
+    private static final String JOHNZON_BIG_DECIMAL_AS_STRING = "johnzon.use-bigdecimal-stringadapter";
+    private static final String JOHNZON_BIG_INTEGER_AS_STRING = "johnzon.use-biginteger-stringadapter";
+
+    /**
+     * Writes a {@code BigDecimal} as a JSON number, as the JSON-B specification requires and the generated JSON
+     * Schema says.
+     */
+    private static final class BigDecimalSerializer implements JsonbSerializer<BigDecimal> {
+        @Override
+        public void serialize(BigDecimal value, JsonGenerator generator, SerializationContext context) {
+            generator.write(value);
+        }
+    }
+
+    /**
+     * Writes a {@code BigInteger} as a JSON number; see {@link BigDecimalSerializer}.
+     */
+    private static final class BigIntegerSerializer implements JsonbSerializer<BigInteger> {
+        @Override
+        public void serialize(BigInteger value, JsonGenerator generator, SerializationContext context) {
+            generator.write(value);
+        }
     }
 
     /**
