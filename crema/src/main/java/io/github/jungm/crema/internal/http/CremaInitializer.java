@@ -59,18 +59,18 @@ public class CremaInitializer implements ServletContainerInitializer {
             problems.add(e.getMessage());
         }
         Supplier<Optional<String>> manifestVersion = () -> manifestVersion(context);
-        List<CremaDeployment.Application> applications = new ArrayList<>();
+        List<CremaDeployment.Declaration> declarations = new ArrayList<>();
         for (Class<?> type : types) {
             Icons icons = type.getAnnotation(Icons.class);
             McpServerSettings server = McpServerSettings.resolve(type.getAnnotation(McpServerInfo.class), config,
                     manifestVersion);
-            applications.add(new CremaDeployment.Application(type, server,
+            declarations.add(new CremaDeployment.Declaration(type, server,
                     icons == null ? null : icons.iconProvider(),
                     Protection.resolve(type, server, config, problems).orElse(null)));
         }
         if (problems.isEmpty()) {
             problems.addAll(CremaDeployment.applicationsDiscovered(context,
-                    new CremaDeployment.Applications(applications, settings)));
+                    new CremaDeployment.Declarations(declarations, settings)));
         }
         if (!problems.isEmpty()) {
             String message = "Invalid MCP Servers:\n - " + String.join("\n - ", problems);

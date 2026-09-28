@@ -48,7 +48,7 @@ public final class CremaDeployment {
             + "its Features; enable CDI for the web application (for example with a beans.xml)";
 
     private static Catalog catalog;
-    private static Applications applications;
+    private static Declarations declarations;
     private static ServletContext owner;
     private static volatile McpTransport transport;
     private static CremaAccessPolicy access;
@@ -63,22 +63,25 @@ public final class CremaDeployment {
     }
 
     /**
-     * The {@code McpApplication} subclasses and the application-wide settings.
+     * The MCP Servers the {@code McpApplication} subclasses declare, and the application-wide settings.
      */
-    public record Applications(List<Application> applications, CremaSettings settings) {
+    public record Declarations(List<Declaration> declarations, CremaSettings settings) {
     }
 
     /**
-     * An {@code McpApplication} subclass.
+     * An {@code McpApplication} subclass and the MCP Server it declares, as the {@code ServletContainerInitializer}
+     * finds it. It becomes a {@link McpServerRegistry.Declaration}, with its icons resolved, once the Features and
+     * with them the {@link IconLookup} are known.
      *
      * @param iconProvider the provider of {@code @Icons} on the subclass, or {@code null}
      * @param protection the protection of its MCP Server, or {@code null} if it isn't protected
      */
-    public record Application(Class<?> type, McpServerSettings settings, Class<? extends IconProvider> iconProvider,
-            Protection protection) {
+    public record Declaration(Class<?> application, McpServerSettings settings,
+            Class<? extends IconProvider> iconProvider, Protection protection) {
 
-        public Application(Class<?> type, McpServerSettings settings, Class<? extends IconProvider> iconProvider) {
-            this(type, settings, iconProvider, null);
+        public Declaration(Class<?> application, McpServerSettings settings,
+                Class<? extends IconProvider> iconProvider) {
+            this(application, settings, iconProvider, null);
         }
     }
 
@@ -94,7 +97,7 @@ public final class CremaDeployment {
             return;
         }
         catalog = discovered;
-        if (applications != null) {
+        if (declarations != null) {
             build().forEach(problems);
         }
     }
@@ -106,15 +109,15 @@ public final class CremaDeployment {
      *
      * @return the deployment problems found, if the Features are already known
      */
-    public static synchronized List<String> applicationsDiscovered(ServletContext context, Applications discovered) {
+    public static synchronized List<String> applicationsDiscovered(ServletContext context, Declarations discovered) {
         if (owner != null && !sameApplication(owner, context)) {
-            return discovered.applications().isEmpty() ? List.of() : List.of(SHARED);
+            return discovered.declarations().isEmpty() ? List.of() : List.of(SHARED);
         }
-        if (!discovered.applications().isEmpty()) {
+        if (!discovered.declarations().isEmpty()) {
             owner = context;
             context.addListener(new CdiCheck());
         }
-        applications = discovered;
+        declarations = discovered;
         return catalog == null ? List.of() : build();
     }
 
@@ -131,7 +134,7 @@ public final class CremaDeployment {
     static synchronized void reset() {
         stop();
         catalog = null;
-        applications = null;
+        declarations = null;
         owner = null;
     }
 
@@ -165,7 +168,7 @@ public final class CremaDeployment {
      * The problem to report once the web application has started, if CDI never delivered its Features.
      */
     static synchronized Optional<String> cdiProblem() {
-        return catalog == null && applications != null && !applications.applications().isEmpty()
+        return catalog == null && declarations != null && !declarations.declarations().isEmpty()
                 ? Optional.of(CDI_INACTIVE) : Optional.empty();
     }
 
@@ -197,30 +200,30 @@ public final class CremaDeployment {
 
     private static List<String> build() {
         List<String> problems = new ArrayList<>();
-        List<McpServerRegistry.Declaration> declarations = new ArrayList<>();
-        for (Application application : applications.applications()) {
+        List<McpServerRegistry.Declaration> resolved = new ArrayList<>();
+        for (Declaration declaration : declarations.declarations()) {
             List<Icon> icons = List.of();
-            if (application.iconProvider() != null) {
+            if (declaration.iconProvider() != null) {
                 try {
-                    icons = catalog.icons().icons(application.iconProvider(), null,
-                            application.settings().wireName());
+                    icons = catalog.icons().icons(declaration.iconProvider(), null,
+                            declaration.settings().wireName());
                 } catch (RuntimeException e) {
-                    problems.add("McpApplication " + application.type().getName() + ": " + e.getMessage());
+                    problems.add("McpApplication " + declaration.application().getName() + ": " + e.getMessage());
                 }
             }
-            declarations.add(new McpServerRegistry.Declaration(application.type(), application.settings(), icons));
+            resolved.add(new McpServerRegistry.Declaration(declaration.application(), declaration.settings(), icons));
         }
-        McpServerRegistry.Result result = McpServerRegistry.build(declarations, catalog.features(),
-                applications.settings());
+        McpServerRegistry.Result result = McpServerRegistry.build(resolved, catalog.features(),
+                declarations.settings());
         problems.addAll(result.problems());
         result.warnings().forEach(LOG::warning);
         if (!problems.isEmpty()) {
             return problems;
         }
         Map<Class<?>, Protection> protections = new HashMap<>();
-        for (Application application : applications.applications()) {
-            if (application.protection() != null) {
-                protections.put(application.type(), application.protection());
+        for (Declaration declaration : declarations.declarations()) {
+            if (declaration.protection() != null) {
+                protections.put(declaration.application(), declaration.protection());
             }
         }
         CremaAccessPolicy.Result policy = CremaAccessPolicy.create(result.registry().servers(), protections);

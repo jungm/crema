@@ -153,7 +153,7 @@ class CremaExtensionTest {
 
     @Test
     void servesFeaturesThroughCdi() {
-        assertEquals(List.of(), CremaDeployment.applicationsDiscovered(CONTEXT, applications()));
+        assertEquals(List.of(), CremaDeployment.applicationsDiscovered(CONTEXT, declarations()));
         Tools.DESTROYED.set(0);
         try (WeldContainer container = weld(Tools.class, Counter.class, PointEncoder.class, BeanIcons.class,
                 Prompts.class).initialize()) {
@@ -173,7 +173,7 @@ class CremaExtensionTest {
     void applicationsMayArriveAfterFeatures() {
         try (WeldContainer container = weld(Tools.class, Counter.class).initialize()) {
             assertEquals(Optional.empty(), CremaDeployment.transport());
-            assertEquals(List.of(), CremaDeployment.applicationsDiscovered(CONTEXT, applications()));
+            assertEquals(List.of(), CremaDeployment.applicationsDiscovered(CONTEXT, declarations()));
             McpTransport transport = CremaDeployment.transport().orElseThrow();
             assertEquals("1", text(call(transport, transport.server(App.class).orElseThrow(), "tools/call",
                     "count")));
@@ -182,7 +182,7 @@ class CremaExtensionTest {
 
     @Test
     void invalidFeaturesFailDeployment() {
-        CremaDeployment.applicationsDiscovered(CONTEXT, applications());
+        CremaDeployment.applicationsDiscovered(CONTEXT, declarations());
         DeploymentException e = assertThrows(DeploymentException.class, () -> weld(Invalid.class).initialize());
         assertTrue(e.getMessage().contains(Invalid.class.getName() + "#wrong(): Prompt methods must return"),
                 e.getMessage());
@@ -190,7 +190,7 @@ class CremaExtensionTest {
 
     @Test
     void unknownServersFailDeploymentInCdi() {
-        CremaDeployment.applicationsDiscovered(CONTEXT, applications());
+        CremaDeployment.applicationsDiscovered(CONTEXT, declarations());
         DeploymentException e = assertThrows(DeploymentException.class, () -> weld(Unbound.class).initialize());
         assertTrue(e.getMessage().contains("is bound to the MCP Server 'elsewhere'"), e.getMessage());
     }
@@ -198,7 +198,7 @@ class CremaExtensionTest {
     @Test
     void unknownServersFailDeploymentInTheInitializer() {
         try (WeldContainer container = weld(Unbound.class).initialize()) {
-            List<String> problems = CremaDeployment.applicationsDiscovered(CONTEXT, applications());
+            List<String> problems = CremaDeployment.applicationsDiscovered(CONTEXT, declarations());
             assertEquals(1, problems.size());
             assertTrue(problems.get(0).contains("is bound to the MCP Server 'elsewhere'"), problems.get(0));
             assertEquals(Optional.empty(), CremaDeployment.transport());
@@ -207,12 +207,12 @@ class CremaExtensionTest {
 
     @Test
     void secondWebApplicationWithApplicationsFails() {
-        assertEquals(List.of(), CremaDeployment.applicationsDiscovered(CONTEXT, applications()));
+        assertEquals(List.of(), CremaDeployment.applicationsDiscovered(CONTEXT, declarations()));
         ServletContext other = context(new ClassLoader() { });
-        assertEquals(List.of(CremaDeployment.SHARED), CremaDeployment.applicationsDiscovered(other, applications()));
+        assertEquals(List.of(CremaDeployment.SHARED), CremaDeployment.applicationsDiscovered(other, declarations()));
         assertEquals(List.of(), CremaDeployment.applicationsDiscovered(other,
-                new CremaDeployment.Applications(List.of(), CremaSettings.defaults())));
-        assertEquals(List.of(), CremaDeployment.applicationsDiscovered(CONTEXT, applications()));
+                new CremaDeployment.Declarations(List.of(), CremaSettings.defaults())));
+        assertEquals(List.of(), CremaDeployment.applicationsDiscovered(CONTEXT, declarations()));
     }
 
     @Test
@@ -227,7 +227,7 @@ class CremaExtensionTest {
 
     @Test
     void applicationsWithoutCdiFailToStart() {
-        assertEquals(List.of(), CremaDeployment.applicationsDiscovered(CONTEXT, applications()));
+        assertEquals(List.of(), CremaDeployment.applicationsDiscovered(CONTEXT, declarations()));
         ServletContextListener check = (ServletContextListener) LISTENERS.get(0);
         IllegalStateException e = assertThrows(IllegalStateException.class,
                 () -> check.contextInitialized(new ServletContextEvent(CONTEXT)));
@@ -240,7 +240,7 @@ class CremaExtensionTest {
     @Test
     void noApplicationsNoCdiCheck() {
         CremaDeployment.applicationsDiscovered(CONTEXT,
-                new CremaDeployment.Applications(List.of(), CremaSettings.defaults()));
+                new CremaDeployment.Declarations(List.of(), CremaSettings.defaults()));
         assertEquals(List.of(), LISTENERS);
     }
 
@@ -269,9 +269,10 @@ class CremaExtensionTest {
         return new Weld().disableDiscovery().addExtension(new CremaExtension()).addBeanClasses(beans);
     }
 
-    private static CremaDeployment.Applications applications() {
-        return new CremaDeployment.Applications(List.of(new CremaDeployment.Application(App.class,
-                McpServerSettings.resolve(null, ConfigLookup.none(), Optional::empty), null)), CremaSettings.defaults());
+    private static CremaDeployment.Declarations declarations() {
+        return new CremaDeployment.Declarations(List.of(new CremaDeployment.Declaration(App.class,
+                McpServerSettings.resolve(null, ConfigLookup.none(), Optional::empty), null)),
+                CremaSettings.defaults());
     }
 
     private static HttpReply call(McpTransport transport, McpServerModel server, String method, String name) {
