@@ -149,9 +149,6 @@ public final class FeatureScanner {
             } else if (ToolResponse.class.isAssignableFrom(raw)) {
                 errors.add("returns ToolResponse with structuredContent = true; set outputSchemaFrom to the type "
                         + "of the structured content");
-            } else if (!mapping.schemas().isObjectSchema(output)) {
-                errors.add("structuredContent = true requires a type that JSON-B always writes as a JSON object, "
-                        + "not " + output.getTypeName());
             } else {
                 json.add("outputSchema", mapping.schemas().schemaFor(output));
             }

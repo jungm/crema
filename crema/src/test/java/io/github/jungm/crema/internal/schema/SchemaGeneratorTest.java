@@ -376,19 +376,20 @@ class SchemaGeneratorTest {
     }
 
     @Test
-    void objectSchemaDetection() {
-        assertTrue(generator.isObjectSchema(Person.class));
-        assertTrue(generator.isObjectSchema(TreeNode.class));
-        assertTrue(generator.isObjectSchema(new TypeLiteral<Map<String, Integer>>() { }.type()));
-        assertTrue(generator.isObjectSchema(JsonObject.class));
-        assertTrue(generator.isObjectSchema(NillableClass.class));
-        assertFalse(generator.isObjectSchema(String.class));
-        assertFalse(generator.isObjectSchema(new TypeLiteral<List<Person>>() { }.type()));
-        assertFalse(generator.isObjectSchema(new TypeLiteral<Optional<Person>>() { }.type()));
-        assertFalse(generator.isObjectSchema(Object.class));
-        assertFalse(generator.isObjectSchema(Custom.class));
-        assertFalse(generator.isObjectSchema(Money.class));
-        assertFalse(generator.isObjectSchema(new TypeLiteral<Map<Address, Integer>>() { }.type()));
+    void outputSchemasOfNonObjectTypes() {
+        assertSchema("{'type':'string'}", generator.schemaFor(String.class));
+        assertSchema("{}", generator.schemaFor(Object.class));
+        JsonObject strings = generator.schemaFor(new TypeLiteral<List<String>>() { }.type());
+        assertSchema("{'type':'array','items':{'type':'string'}}", strings);
+        assertTrue(SchemaValidator.validate(strings, parse("[\"a\",\"b\"]")).isEmpty());
+        assertFalse(SchemaValidator.validate(strings, parse("{\"a\":1}")).isEmpty());
+        JsonObject optional = generator.schemaFor(new TypeLiteral<Optional<String>>() { }.type());
+        assertTrue(SchemaValidator.validate(optional, JsonValue.NULL).isEmpty(), optional::toString);
+        assertTrue(SchemaValidator.validate(optional, parse("\"x\"")).isEmpty(), optional::toString);
+        JsonObject people = generator.schemaFor(new TypeLiteral<List<Person>>() { }.type());
+        assertEquals("array", people.getString("type"));
+        assertTrue(people.containsKey("$defs") || people.getJsonObject("items").containsKey("properties"),
+                people::toString);
     }
 
     @Test
@@ -400,6 +401,10 @@ class SchemaGeneratorTest {
 
     private void assertScalar(String expected, Type type) {
         assertSchema(expected, generator.schemaFor(type));
+    }
+
+    private static JsonValue parse(String json) {
+        return Json.createReader(new StringReader(json)).readValue();
     }
 
     private static void assertSchema(String expected, JsonObject actual) {

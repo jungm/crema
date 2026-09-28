@@ -235,22 +235,12 @@ class FeatureScannerTest {
         }
 
         @Tool(structuredContent = true)
-        public String structuredString() {
-            return null;
-        }
-
-        @Tool(structuredContent = true)
         public ToolResponse structuredResponse() {
             return null;
         }
 
         @Tool(structuredContent = true)
         public void structuredVoid() {
-        }
-
-        @Tool(structuredContent = true)
-        public Optional<Weather> structuredOptional() {
-            return null;
         }
 
         @Tool
@@ -331,10 +321,8 @@ class FeatureScannerTest {
                 "Completion Methods must return String, List<String> or CompletionResult, not int");
         assertProblem(problems, prefix + "twoArguments(String, String)", "exactly one String Argument");
         assertProblem(problems, prefix + "nonStringArgument(int)", "exactly one String Argument");
-        assertProblem(problems, prefix + "structuredString()", "always writes as a JSON object");
         assertProblem(problems, prefix + "structuredResponse()", "set outputSchemaFrom");
         assertProblem(problems, prefix + "structuredVoid()", "requires a return type or outputSchemaFrom");
-        assertProblem(problems, prefix + "structuredOptional()", "always writes as a JSON object");
         assertProblem(problems, prefix + "completionContext(CompletionContext)",
                 "CompletionContext is only available to Completion Methods");
         assertProblem(problems, prefix + "primitiveOptional(int)", "needs a defaultValue or a wrapper type");
@@ -348,6 +336,41 @@ class FeatureScannerTest {
         assertProblem(problems, prefix + "invalidBoolean()", "neither 'true' nor 'false'");
         assertProblem(problems, prefix + "invalidJson()", "isn't valid JSON");
         assertProblem(problems, prefix + "invalidPriority()", "between 0.0 and 1.0");
+    }
+
+    public static class AnyStructuredContent {
+        @Tool(structuredContent = true)
+        public String string() {
+            return null;
+        }
+
+        @Tool(structuredContent = true)
+        public List<Weather> list() {
+            return null;
+        }
+
+        @Tool(structuredContent = true)
+        public Optional<Weather> optional() {
+            return null;
+        }
+
+        @Tool(structuredContent = true, outputSchemaFrom = int[].class)
+        public ToolResponse numbers() {
+            return null;
+        }
+    }
+
+    @Test
+    void structuredContentMayBeAnyJsonValue() {
+        FeatureScanner scanner = scan(AnyStructuredContent.class);
+        assertEquals(List.of(), scanner.problems());
+        Map<String, JsonObject> schemas = new java.util.HashMap<>();
+        scanner.features().forEach(f -> schemas.put(f.name(), ((Feature.Tool) f).definition().getJsonObject("outputSchema")));
+        assertEquals(Json.parse("{\"type\":\"string\"}"), schemas.get("string"));
+        assertEquals("array", schemas.get("list").getString("type"));
+        assertEquals("array", schemas.get("numbers").getString("type"));
+        assertTrue(schemas.get("optional").containsKey("anyOf") || schemas.get("optional").containsKey("type"),
+                schemas.get("optional")::toString);
     }
 
     @Test
