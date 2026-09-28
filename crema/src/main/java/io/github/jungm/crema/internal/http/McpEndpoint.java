@@ -1,6 +1,6 @@
 package io.github.jungm.crema.internal.http;
 
-import java.util.concurrent.CompletionStage;
+import java.io.IOException;
 
 import io.github.jungm.crema.internal.model.McpServerModel;
 import io.github.jungm.crema.internal.protocol.Request;
@@ -8,23 +8,19 @@ import io.github.jungm.crema.internal.security.Caller;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.ws.rs.Consumes;
+import jakarta.ws.rs.NotFoundException;
 import jakarta.ws.rs.POST;
 import jakarta.ws.rs.Path;
-import jakarta.ws.rs.Produces;
 import jakarta.ws.rs.core.Context;
-import jakarta.ws.rs.core.MediaType;
-import jakarta.ws.rs.core.Response;
-import jakarta.ws.rs.sse.Sse;
-import jakarta.ws.rs.sse.SseEventSink;
 
 /**
  * The MCP Endpoint. It executes what {@link McpEndpointFilter} has validated and planned: the filter passes the
- * plan as a request property, sets {@code Content-Type} to {@link #PLANNED}, and sets {@code Accept} to select the
- * method that responds with JSON or streams.
+ * plan as a request property and sets {@code Content-Type} to {@link #PLANNED}. The response, JSON or an SSE
+ * stream, is written to the servlet response directly (see {@link JaxRs#write}).
  * <p>
- * An application's own scanning {@code Application} may pick this class up as well. There it has no
- * {@code GET} method, and its methods consume only {@link #PLANNED}, a media type no client sends, so they never
- * compete with the application's own root resource. Without a plan it answers {@code 404}.
+ * An application's own scanning {@code Application} may pick this class up as well. There it has no {@code GET}
+ * method, and its only method consumes {@link #PLANNED}, a media type no client sends, so it never competes with
+ * the application's own root resource. Without a plan it answers {@code 404}.
  */
 @Path("")
 public class McpEndpoint {
@@ -41,46 +37,21 @@ public class McpEndpoint {
      * A validated request and what is needed to handle it.
      */
     record Planned(McpTransport transport, McpServerModel server, McpTransport.Plan plan, Caller caller) {
-
-        Request request() {
-            return plan instanceof McpTransport.Stream stream ? stream.request()
-                    : ((McpTransport.Respond) plan).request();
-        }
     }
 
     @POST
     @Consumes(PLANNED)
-    @Produces(MediaType.APPLICATION_JSON)
-    public Response post(@Context HttpServletRequest servletRequest) {
+    public void post(@Context HttpServletRequest servletRequest, @Context HttpServletResponse servletResponse)
+            throws IOException {
         if (!(servletRequest.getAttribute(PLAN_PROPERTY) instanceof Planned planned)) {
-            return Response.status(Response.Status.NOT_FOUND).build();
+            throw new NotFoundException();
         }
-        return JaxRs.response(planned.transport().respond(planned.server(), planned.request(), planned.caller()));
-    }
-
-    @POST
-    @Consumes(PLANNED)
-    @Produces(MediaType.SERVER_SENT_EVENTS)
-    public void stream(@Context HttpServletRequest servletRequest, @Context HttpServletResponse servletResponse,
-            @Context SseEventSink sink, @Context Sse sse) {
-        if (!(servletRequest.getAttribute(PLAN_PROPERTY) instanceof Planned planned)) {
-            sink.close();
-            return;
+        if (planned.plan() instanceof McpTransport.Stream stream) {
+            planned.transport().stream(planned.server(), stream.request(), planned.caller(),
+                    JaxRs.eventStream(servletResponse));
+        } else {
+            Request request = ((McpTransport.Respond) planned.plan()).request();
+            JaxRs.write(servletResponse, planned.transport().respond(planned.server(), request, planned.caller()));
         }
-        if (servletResponse != null) {
-            servletResponse.setHeader(X_ACCEL_BUFFERING, "no");
-        }
-        planned.transport().stream(planned.server(), planned.request(), planned.caller(),
-                new McpTransport.EventStream() {
-                    @Override
-                    public CompletionStage<?> send(String json) {
-                        return sink.send(sse.newEvent(json));
-                    }
-
-                    @Override
-                    public void close() {
-                        sink.close();
-                    }
-                });
     }
 }
