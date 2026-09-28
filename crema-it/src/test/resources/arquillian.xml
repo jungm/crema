@@ -41,4 +41,12 @@
             <property name="appDeployTimeout">20</property>
         </configuration>
     </container>
+
+    <container qualifier="payara">
+        <configuration>
+            <property name="payaraHome">${it.payara.home}</property>
+            <property name="adminPort">${it.payara.admin.port}</property>
+            <property name="allowConnectingToRunningServer">false</property>
+        </configuration>
+    </container>
 </arquillian>

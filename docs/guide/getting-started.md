@@ -6,7 +6,7 @@ A complete walk-through: add Crema to a WAR, declare an MCP Server, add Features
 
 - Java 17 or newer
 - A Jakarta EE 10 Web Profile (or newer) Runtime. Crema is tested on Apache TomEE 10, WildFly, Open Liberty and
-  WebSphere Liberty.
+  Payara/GlassFish.
 - MicroProfile Config is optional, except for OAuth-protected MCP Servers.
 
 ## 1. Add the dependency

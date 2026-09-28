@@ -33,8 +33,9 @@ public final class McpClient {
     public static final String META_CLIENT_CAPABILITIES = "io.modelcontextprotocol/clientCapabilities";
     public static final String META_CLIENT_INFO = "io.modelcontextprotocol/clientInfo";
 
-    private static final HttpClient HTTP = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(10))
-            .followRedirects(HttpClient.Redirect.NEVER).build();
+    // HTTP/1.1 only: the JDK client's h2c upgrade attempt breaks the 413 response for oversized bodies on Payara.
+    private static final HttpClient HTTP = HttpClient.newBuilder().version(HttpClient.Version.HTTP_1_1)
+            .connectTimeout(Duration.ofSeconds(10)).followRedirects(HttpClient.Redirect.NEVER).build();
 
     private final URI endpoint;
     private final AtomicInteger ids = new AtomicInteger();

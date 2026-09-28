@@ -7,7 +7,7 @@ A portable implementation of the `org.mcpjava` MCP server annotations for Jakart
 ### Hosting
 
 **Runtime**:
-The Jakarta EE application server the application is deployed to (TomEE, Open Liberty, WebSphere Liberty, WildFly).
+The Jakarta EE application server the application is deployed to (TomEE, Open Liberty, WildFly, Payara).
 _Avoid_: server, container, app server
 
 **MCP Server**:

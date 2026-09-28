@@ -27,12 +27,15 @@
         <wildfly-arquillian.version>5.1.0.Final</wildfly-arquillian.version>
         <openliberty.version>26.0.0.9</openliberty.version>
         <liberty-arquillian.version>3.0.0</liberty-arquillian.version>
+        <payara.version>6.2025.11</payara.version>
+        <payara-arquillian.version>3.1</payara-arquillian.version>
 
         <!-- Non-default ports, distinct per Runtime, so profiles don't clash with each other or with local servers. -->
         <it.tomee.http.port>18080</it.tomee.http.port>
         <it.tomee.stop.port>18005</it.tomee.stop.port>
         <it.wildfly.port.offset>10100</it.wildfly.port.offset>
         <it.wildfly.management.port>20090</it.wildfly.management.port>
+        <it.payara.admin.port>4848</it.payara.admin.port>
         <it.openliberty.http.port>18280</it.openliberty.http.port>
         <it.openliberty.https.port>18643</it.openliberty.https.port>
 
@@ -140,6 +143,8 @@
                         <it.tomee.dir>${project.build.directory}/tomee</it.tomee.dir>
                         <it.tomee.version>${tomee.version}</it.tomee.version>
                         <it.tomee.classifier>${tomee.classifier}</it.tomee.classifier>
+                        <it.payara.home>${project.build.directory}/payara6</it.payara.home>
+                        <it.payara.admin.port>${it.payara.admin.port}</it.payara.admin.port>
                         <it.wildfly.home>${project.build.directory}/wildfly-${wildfly.version}</it.wildfly.home>
                         <it.wildfly.port.offset>${it.wildfly.port.offset}</it.wildfly.port.offset>
                         <it.wildfly.management.port>${it.wildfly.management.port}</it.wildfly.management.port>
@@ -296,6 +301,50 @@
                                 <it.liberty.http.port>${liberty.http.port}</it.liberty.http.port>
                             </systemPropertyVariables>
                         </configuration>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+
+        <profile>
+            <id>payara</id>
+            <properties>
+                <skipITs>false</skipITs>
+                <it.runtime>payara</it.runtime>
+            </properties>
+            <dependencies>
+                <dependency>
+                    <groupId>fish.payara.arquillian</groupId>
+                    <artifactId>arquillian-payara-server-managed</artifactId>
+                    <version>${payara-arquillian.version}</version>
+                    <scope>test</scope>
+                </dependency>
+            </dependencies>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-dependency-plugin</artifactId>
+                        <executions>
+                            <execution>
+                                <id>unpack-payara</id>
+                                <phase>pre-integration-test</phase>
+                                <goals>
+                                    <goal>unpack</goal>
+                                </goals>
+                                <configuration>
+                                    <artifactItems>
+                                        <artifactItem>
+                                            <groupId>fish.payara.distributions</groupId>
+                                            <artifactId>payara</artifactId>
+                                            <version>${payara.version}</version>
+                                            <type>zip</type>
+                                            <outputDirectory>${project.build.directory}</outputDirectory>
+                                        </artifactItem>
+                                    </artifactItems>
+                                </configuration>
+                            </execution>
+                        </executions>
                     </plugin>
                 </plugins>
             </build>

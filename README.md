@@ -15,7 +15,7 @@ Crema turns methods of your CDI beans into [Model Context Protocol](https://mode
 and Prompts that AI clients can discover and call. It is a plain library in your WAR, implements the
 [`org.mcpjava:mcp-server-api`](https://github.com/mcp-java/java-mcp-annotations) annotations and MCP `2026-07-28`
 (Streamable HTTP), and runs on any Jakarta EE 10 Web Profile Runtime. It is tested on TomEE, WildFly, Open Liberty and
-WebSphere Liberty.
+Payara/GlassFish.
 
 ## Example
 

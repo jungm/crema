@@ -15,6 +15,7 @@ build:
 mvn -B -pl crema-it -am verify -Ptomee
 mvn -B -pl crema-it -am verify -Pwildfly
 mvn -B -pl crema-it -am verify -Popenliberty
+mvn -B -pl crema-it -am verify -Ppayara
 ```
 
 `ConformanceIT` runs the official MCP conformance suite (`@modelcontextprotocol/conformance`) against a fixture WAR;

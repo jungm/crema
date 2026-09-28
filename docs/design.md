@@ -9,7 +9,7 @@ Crema is an MCP server implementation for Jakarta EE. It implements the `org.mcp
 - Compile-scope APIs (all `provided`): Jakarta EE 10 Web Profile (`jakarta.platform:jakarta.jakartaee-web-api:10.0.0`), and **optional** `org.eclipse.microprofile.config:microprofile-config-api`. Crema must work when MP Config is absent at runtime: guard every use behind a class-presence check and keep MicroProfile types out of classes that are loaded unconditionally.
 - Runtime dependencies (compile scope, shipped transitively in `WEB-INF/lib`): `org.mcpjava:mcp-server-api:1.0.0` and `com.nimbusds:nimbus-jose-jwt` (latest 10.x, not relocated).
 - No other runtime dependencies. No vendor-specific code, except provider properties set through the standard `JsonbConfig` that other providers ignore (Johnzon writes `BigDecimal`/`BigInteger` as strings unless told otherwise).
-- Target Runtimes: Apache TomEE 10.x, Open Liberty, WebSphere Liberty, WildFly (all EE 10+).
+- Target Runtimes: Apache TomEE 10.x, Open Liberty, WildFly, Payara (all EE 10+).
 - Packaging: a plain JAR in the application's `WEB-INF/lib`, with `META-INF/beans.xml` (`bean-discovery-mode="annotated"`) and a CDI portable extension registered in `META-INF/services/jakarta.enterprise.inject.spi.Extension`. The SPI implementation is registered in `META-INF/services/org.mcpjava.server.spi.McpServerSPI`.
 
 ## 2. Protocol
@@ -118,6 +118,6 @@ Cancellation signalling (the `Cancellation` parameter never fires), `subscriptio
 ## 9. Testing
 
 - `crema`: JUnit 5 unit tests for everything that doesn't need a Runtime (schema generation, binding, conversion, JSON-RPC handling, validation, header validation).
-- `crema-it`: Arquillian deploys test WARs to each Runtime, one Maven profile per Runtime (`tomee`, `openliberty` and `wildfly`), with managed containers that Maven provisions itself. Tests speak MCP over HTTP and cover every method, error path and security case. Tests use a plain `java.net.http.HttpClient`, and validate every MCP result, including those of the security tests, against the 2026-07-28 `schema.json`. The MCP Java SDK doesn't speak 2026-07-28 yet.
+- `crema-it`: Arquillian deploys test WARs to each Runtime, one Maven profile per Runtime (`tomee`, `openliberty`, `wildfly` and `payara`), with managed containers that Maven provisions itself. Tests speak MCP over HTTP and cover every method, error path and security case. Tests use a plain `java.net.http.HttpClient`, and validate every MCP result, including those of the security tests, against the 2026-07-28 `schema.json`. The MCP Java SDK doesn't speak 2026-07-28 yet.
 - A conformance fixture WAR (the exact `test_*` fixtures listed in protocol-notes.md) runs against the official suite `@modelcontextprotocol/conformance@0.2.0-alpha.11` (`--requirements 2026-07-28`) on at least one Runtime. A checked-in baseline lists only the scenarios Crema doesn't support by design (MRTR, `-32021`), and the run must exit with 0.
 - Security integration tests: a protected MCP Server coexists with a Jakarta Security `@OpenIdAuthenticationMechanismDefinition` elsewhere in the same WAR, on every Runtime. Every `401`/`403` path is covered, using tokens minted by a fake Authorization Server in the test JVM (issuer metadata + JWKS, with key rotation).
