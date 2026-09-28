@@ -1,6 +1,11 @@
-# Crema
+<h1 align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/images/crema-logo-dark.svg">
+    <img src="docs/images/crema-logo.svg" alt="Crema" width="420">
+  </picture>
+</h1>
 
-Crema: an MCP server implementation for Jakarta EE.
+<p align="center">An MCP server implementation for Jakarta EE.</p>
 
 ## What it is
 
