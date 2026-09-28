@@ -46,6 +46,7 @@ public class AdminMcp extends McpApplication {}
 - Each concrete `McpApplication` subclass declares exactly one MCP Server. Declaring at least one is mandatory for Features to be exposed.
 - `@McpServerInfo` attributes: `name` (default `McpServer.DEFAULT`), `title`, `version`, `description`, `instructions`, `websiteUrl`. Empty string means unset. If `version` is unset, fall back to `Implementation-Version` from the WAR's `META-INF/MANIFEST.MF` (via `ServletContext`), else `"0.0.0"`.
 - A Crema resource class that is picked up by an application's own scanning `Application` must not serve MCP there. It answers `404` unless the owning `Application` is an `McpApplication`.
+- Crema writes MCP responses (JSON and SSE) directly to the servlet response and commits it, bypassing JAX-RS response processing. TomEE applies an application's scanned providers to every `Application` in the WAR, so this is the only portable way to keep them off MCP traffic. Crema's JAX-RS resource method consumes only an internal media type that its pre-matching filter sets, so it never competes with an application's own root resource.
 - Implementation info sent to clients: `name` = the MCP Server name (`"default"` for the default one), plus title, version, description, websiteUrl and icons.
 
 ## 4. Configuration
@@ -75,7 +76,7 @@ public class AdminMcp extends McpApplication {}
 
 ## 6. Deployment-time validation
 
-Each of these fails deployment (a CDI `addDeploymentProblem`) with the offending class and method named:
+Each of these fails deployment with the offending class and method named. Crema reports it as a CDI deployment problem, or from its `ServletContainerInitializer` and a `ServletContextListener` (Liberty only logs exceptions from initializers but refuses to start an application whose listener fails):
 - duplicate Feature names (for each kind) within one MCP Server, or duplicate resource URIs;
 - a Feature bound to an MCP Server name that no `McpApplication` declares;
 - two `McpApplication`s declaring the same MCP Server name;
