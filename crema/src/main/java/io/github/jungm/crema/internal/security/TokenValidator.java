@@ -106,8 +106,9 @@ final class TokenValidator implements Closeable {
         if (!protection.principalClaim().contains(".")) {
             required.add(protection.principalClaim());
         }
+        // A mutable audience set: the Nimbus copy that Payara bundles calls contains(null) on it, which Set.of rejects.
         DefaultJWTClaimsVerifier<SecurityContext> claims = new DefaultJWTClaimsVerifier<>(
-                Set.of(protection.resource()), new JWTClaimsSet.Builder().issuer(protection.issuer()).build(),
+                new HashSet<>(Set.of(protection.resource())), new JWTClaimsSet.Builder().issuer(protection.issuer()).build(),
                 required, null);
         claims.setMaxClockSkew(protection.clockSkewSeconds());
         processor.setJWSTypeVerifier(TYPES);
