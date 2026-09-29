@@ -25,6 +25,17 @@ example `@OpenIdAuthenticationMechanismDefinition`) for other paths. An open MCP
 With `authenticator=oauth`, MCP Clients authenticate with OAuth access tokens: every request needs a bearer token (a
 signed JWT) issued for the MCP Server, and Crema validates the token itself.
 
+OAuth is the most involved option, and most of the work is on the Authorization Server, not in Crema. An MCP Client
+usually meets your Authorization Server for the first time when it connects, so it has no client ID there yet. The
+Authorization Server must let such clients register: through Client ID Metadata Documents (CIMD), where the client ID
+is a URL of a document that describes the client, or through Dynamic Client Registration (RFC 7591). Otherwise every
+MCP Client has to be registered in advance and configured with its client ID by hand. Check which of these your
+Authorization Server and your MCP Clients support before choosing OAuth. Keycloak supports CIMD as an experimental
+feature; [Integrating with Model Context Protocol (MCP)](https://www.keycloak.org/securing-apps/mcp-authz-server)
+shows how to set it up. If your MCP Clients are agents or scripts
+you control, [Basic authentication](#basic-authentication) or [your own Authenticator](#your-own-authenticator) is
+simpler.
+
 ```java
 @ApplicationPath("mcp")
 @RolesAllowed("user")

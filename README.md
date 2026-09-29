@@ -62,20 +62,8 @@ public class OrderFeatures {
 }
 ```
 
-Deploy the WAR and point an MCP Client at `http://<host>:<port>/<context-root>/mcp`. To protect the MCP Server
-with OAuth, add `@RolesAllowed` and tell Crema about your Authorization Server:
-
-```java
-@ApplicationPath("mcp")
-@RolesAllowed("user")
-public class OrderMcp extends McpApplication {
-}
-```
-
-```properties
-crema.default-server.issuer=https://keycloak.example.com/realms/shop
-crema.default-server.resource=https://shop.example.com/shop/mcp
-```
+Deploy the WAR and point an MCP Client at `http://<host>:<port>/<context-root>/mcp`. To restrict who may call it,
+see [Authentication](docs/guide/authentication.md).
 
 ## Documentation
 
