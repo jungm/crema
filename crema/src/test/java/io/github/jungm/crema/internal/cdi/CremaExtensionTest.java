@@ -9,6 +9,7 @@ import java.io.UncheckedIOException;
 import java.lang.reflect.Proxy;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -45,6 +46,8 @@ import io.github.jungm.crema.internal.http.McpTransport;
 import io.github.jungm.crema.internal.model.McpServerModel;
 import io.github.jungm.crema.internal.json.Json;
 import io.github.jungm.crema.internal.security.Caller;
+import io.github.jungm.crema.internal.security.AuthenticatorSetting;
+import io.github.jungm.crema.internal.security.BasicMechanism;
 import io.github.jungm.crema.internal.security.Protection;
 import jakarta.annotation.PreDestroy;
 import jakarta.annotation.security.RolesAllowed;
@@ -263,7 +266,7 @@ class CremaExtensionTest {
     @Test
     void authenticatorsAreBeans() {
         assertEquals(List.of(), CremaDeployment.applicationsDiscovered(CONTEXT, declarations(ProtectedApp.class,
-                null)));
+                new AuthenticatorSetting.Bean())));
         try (WeldContainer container = weld(Whoami.class, KeyAuthenticator.class, Counter.class).initialize()) {
             McpTransport transport = CremaDeployment.transport().orElseThrow();
             McpServerModel server = transport.server(ProtectedApp.class).orElseThrow();
@@ -277,21 +280,40 @@ class CremaExtensionTest {
     }
 
     @Test
-    void protectedServerNeedsAnAuthenticatorOrAnIssuer() {
-        CremaDeployment.applicationsDiscovered(CONTEXT, declarations(ProtectedApp.class, null));
+    void beanSettingNeedsAnAuthenticator() {
+        CremaDeployment.applicationsDiscovered(CONTEXT, declarations(ProtectedApp.class,
+                new AuthenticatorSetting.Bean()));
         DeploymentException e = assertThrows(DeploymentException.class, () -> weld(Whoami.class).initialize());
-        assertTrue(e.getMessage().contains("has neither an McpAuthenticator nor crema.default-server.issuer"),
-                e.getMessage());
+        assertTrue(e.getMessage().contains("crema.default-server.authenticator is bean, but no McpAuthenticator is "
+                + "bound to it"), e.getMessage());
     }
 
     @Test
-    void protectedServerCantHaveBothAnAuthenticatorAndAnIssuer() {
-        CremaDeployment.applicationsDiscovered(CONTEXT, declarations(ProtectedApp.class, new Protection("default",
-                "https://as.example.com", null, "https://mcp.example.com/mcp", "groups", "sub", 60, List.of())));
-        DeploymentException e = assertThrows(DeploymentException.class,
-                () -> weld(Whoami.class, KeyAuthenticator.class, Counter.class).initialize());
-        assertTrue(e.getMessage().contains("has both McpAuthenticator " + KeyAuthenticator.class.getName()
-                + " and crema.default-server.issuer"), e.getMessage());
+    void authenticatorsNeedTheBeanSetting() {
+        for (AuthenticatorSetting setting : List.of(new AuthenticatorSetting.OAuth(new Protection("default",
+                "https://as.example.com", null, "https://mcp.example.com/mcp", "groups", "sub", 60, List.of())),
+                new AuthenticatorSetting.Basic(Map.of("foo", new BasicMechanism.User("123", Set.of()))))) {
+            CremaDeployment.reset();
+            CremaDeployment.applicationsDiscovered(CONTEXT, declarations(ProtectedApp.class, setting));
+            DeploymentException e = assertThrows(DeploymentException.class,
+                    () -> weld(Whoami.class, KeyAuthenticator.class, Counter.class).initialize());
+            assertTrue(e.getMessage().contains("has McpAuthenticator " + KeyAuthenticator.class.getName()
+                    + ", but crema.default-server.authenticator isn't bean"), e.getMessage());
+        }
+    }
+
+    @Test
+    void servesBasicAuthentication() {
+        assertEquals(List.of(), CremaDeployment.applicationsDiscovered(CONTEXT, declarations(ProtectedApp.class,
+                new AuthenticatorSetting.Basic(Map.of("foo", new BasicMechanism.User("123", Set.of("user")))))));
+        try (WeldContainer container = weld(Whoami.class).initialize()) {
+            McpTransport transport = CremaDeployment.transport().orElseThrow();
+            McpServerModel server = transport.server(ProtectedApp.class).orElseThrow();
+            assertEquals("foo", text(call(transport, server, "tools/call", "whoami", Map.of("Authorization",
+                    List.of("Basic " + Base64.getEncoder().encodeToString("foo:123".getBytes(
+                            StandardCharsets.UTF_8)))))));
+            assertEquals(401, call(transport, server, "tools/call", "whoami").status());
+        }
     }
 
     @Test
@@ -376,12 +398,12 @@ class CremaExtensionTest {
     }
 
     private static CremaDeployment.Declarations declarations() {
-        return declarations(App.class, null);
+        return declarations(App.class, new AuthenticatorSetting.Unset());
     }
 
-    private static CremaDeployment.Declarations declarations(Class<?> application, Protection protection) {
+    private static CremaDeployment.Declarations declarations(Class<?> application, AuthenticatorSetting setting) {
         return new CremaDeployment.Declarations(List.of(new CremaDeployment.Declaration(application,
-                McpServerSettings.resolve(null, ConfigLookup.none(), Optional::empty), null, protection)),
+                McpServerSettings.resolve(null, ConfigLookup.none(), Optional::empty), null, setting)),
                 CremaSettings.defaults());
     }
 

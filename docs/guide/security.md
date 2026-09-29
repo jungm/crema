@@ -17,17 +17,29 @@ means any authenticated caller.
   confidentiality: calling one answers `403`, not "unknown".
 - On an open MCP Server the caller and roles are those of the request's JAX-RS `SecurityContext`
   (`getUserPrincipal()` and `isUserInRole`), that is, whoever your Runtime authenticated, for example via a login
-  configured for the WAR. An [Authenticator](#protecting-an-mcp-server-without-oauth) replaces it.
+  configured for the WAR. [Basic authentication](#basic-authentication) or an
+  [Authenticator](#your-own-authenticator) replaces it.
 
-## Protecting an MCP Server with OAuth
+## Protected MCP Servers
 
-An `McpApplication` subclass annotated with `@RolesAllowed` or `@DenyAll` declares a **protected** MCP Server. It is
-protected either by OAuth, when `issuer` is configured, or by an
-[Authenticator](#protecting-an-mcp-server-without-oauth). Deployment fails if it has both or neither.
+An `McpApplication` subclass annotated with `@RolesAllowed` or `@DenyAll` declares a **protected** MCP Server: every
+request needs a caller that Crema authenticates. The MicroProfile Config key `<prefix>authenticator` says how, and a
+protected MCP Server must set it:
 
-With OAuth, MCP Clients authenticate with OAuth access tokens: every request needs a bearer token (a signed JWT)
-issued for the MCP Server, and Crema validates the token itself. Your Runtime needs no security configuration for this, and your application can
-keep its own login (for example `@OpenIdAuthenticationMechanismDefinition`) for other paths.
+| `authenticator` | Callers authenticate with | Configured by |
+|---|---|---|
+| `oauth` | OAuth access tokens from an Authorization Server | `issuer`, `resource`, … |
+| `basic` | HTTP Basic user name and password | `users`, `users.<name>.password`, `users.<name>.roles` |
+| `bean` | whatever your `McpAuthenticator` bean checks | your code |
+
+Your Runtime needs no security configuration for any of them, and your application can keep its own login (for
+example `@OpenIdAuthenticationMechanismDefinition`) for other paths. An open MCP Server may also set `basic` or
+`bean`: then a request without credentials gets the Runtime's caller.
+
+## OAuth
+
+With `authenticator=oauth`, MCP Clients authenticate with OAuth access tokens: every request needs a bearer token (a
+signed JWT) issued for the MCP Server, and Crema validates the token itself.
 
 ```java
 @ApplicationPath("mcp")
@@ -39,6 +51,7 @@ public class OrderMcp extends McpApplication {
 With Keycloak as the Authorization Server, `META-INF/microprofile-config.properties` could be:
 
 ```properties
+crema.default-server.authenticator=oauth
 crema.default-server.issuer=https://keycloak.example.com/realms/shop
 crema.default-server.resource=https://shop.example.com/shop/mcp
 crema.default-server.roles-claim=realm_access.roles
@@ -76,10 +89,31 @@ public List<Order> myOrders(McpCaller caller) {
 }
 ```
 
-## Protecting an MCP Server without OAuth
+## Basic authentication
 
-If you don't want to run an Authorization Server, for example because your MCP Clients use a fixed API key, declare
-an `McpAuthenticator` bean. It gets the request's header fields and returns the caller with its roles,
+With `authenticator=basic`, MCP Clients send a user name and password (RFC 7617), and Crema checks them against users
+in MicroProfile Config:
+
+```properties
+crema.servers.ops.authenticator=basic
+crema.servers.ops.users=agent,root
+crema.servers.ops.users.agent.password=${OPS_AGENT_PASSWORD}
+crema.servers.ops.users.agent.roles=user
+crema.servers.ops.users.root.password=${OPS_ROOT_PASSWORD}
+crema.servers.ops.users.root.roles=user,admin
+```
+
+- Passwords are plaintext. Anyone who can read the configuration can read them, so keep them out of the WAR, for
+  example in environment variables or a secrets-backed config source as above.
+- User names are case-sensitive and must not contain `:` or whitespace. Passwords may contain anything.
+- Missing, malformed or wrong credentials all get `401` with `WWW-Authenticate: Basic realm="ops", charset="UTF-8"`,
+  so the response doesn't tell whether a user exists. A missing role gets a plain `403`.
+- Basic credentials are only as private as the connection: serve the MCP Endpoint over HTTPS.
+
+## Your own Authenticator
+
+If neither fits, for example because your MCP Clients use API keys kept in a database, declare an `McpAuthenticator`
+bean and set `authenticator=bean`. It gets the request's header fields and returns the caller with its roles,
 `none()` for no credentials, or `rejected()` for invalid ones:
 
 ```java
@@ -110,6 +144,10 @@ public class OpsMcp extends McpApplication {
 }
 ```
 
+```properties
+crema.servers.ops.authenticator=bean
+```
+
 - On a protected MCP Server, `none()` is answered with `401` and `WWW-Authenticate: Bearer`. On an open MCP Server
   the request falls back to the caller your Runtime authenticated, so an Authenticator can also just add callers there.
 - `rejected()`, an exception or `null` is answered with `401` and `WWW-Authenticate: Bearer error="invalid_token"`.
@@ -122,12 +160,13 @@ public class OpsMcp extends McpApplication {
   proxy in front of the Runtime strips them from client requests.
 - Claims you pass to `McpAuthentication.caller(name, roles, claims)` are what `McpCaller.claims()` returns.
 
-See [ADR 0002](../adr/0002-authenticator-spi-for-callers-without-oauth.md) for why this is an SPI rather than
-configuration.
+See [ADR 0002](../adr/0002-authenticator-spi-for-callers-without-oauth.md) and
+[ADR 0003](../adr/0003-built-in-basic-authentication-and-an-explicit-authenticator-key.md) for how the Authenticator,
+Basic authentication and OAuth relate.
 
 ## The caller and the Runtime
 
-**The Runtime doesn't see token or Authenticator callers.** Crema authenticates them for MCP requests only, so
+**The Runtime doesn't see the callers Crema authenticates.** Crema authenticates them for MCP requests only, so
 `@RolesAllowed` on EJBs, the Jakarta Security `SecurityContext` and the injectable CDI `Principal` still see an
 anonymous caller. Pass
 `McpCaller` on explicitly where you need it. Tokens are never forwarded anywhere. See

@@ -16,6 +16,8 @@ import com.nimbusds.jose.JWSObject;
 import io.github.jungm.crema.McpApplication;
 import io.github.jungm.crema.it.security.app.ApiApp;
 import io.github.jungm.crema.it.security.app.ApiResource;
+import io.github.jungm.crema.it.security.app.BasicFeatures;
+import io.github.jungm.crema.it.security.app.BasicMcp;
 import io.github.jungm.crema.it.security.app.DeniedFeatures;
 import io.github.jungm.crema.it.security.app.DeniedMcp;
 import io.github.jungm.crema.it.security.app.KeyedAuthenticator;
@@ -30,7 +32,8 @@ import io.github.jungm.crema.it.security.app.UiServlet;
 
 /**
  * The WAR for the security tests: the protected MCP Server at {@code /mcp}, a protected {@code @DenyAll} one at
- * {@code /denied}, one protected by an {@code McpAuthenticator} at {@code /keyed}, an open one at {@code /open}, a
+ * {@code /denied}, one protected by an {@code McpAuthenticator} at {@code /keyed}, one with Basic authentication at
+ * {@code /basic}, an open one at {@code /open}, a
  * JAX-RS API at {@code /api}, and a servlet at {@code /ui} protected by Jakarta Security's OpenID Connect mechanism.
  * Crema, Nimbus and the MCP server API are in {@code WEB-INF/lib}, as in a real application.
  */
@@ -46,16 +49,26 @@ final class SecurityWar {
      */
     static WebArchive create(String name, String issuer, String resource, String deniedResource) {
         String config = String.join("\n",
+                "crema.default-server.authenticator=oauth",
                 "crema.default-server.issuer=" + issuer,
                 "crema.default-server.resource=" + resource,
+                "crema.servers.denied.authenticator=oauth",
                 "crema.servers.denied.issuer=" + issuer,
                 "crema.servers.denied.resource=" + deniedResource,
+                "crema.servers.keyed.authenticator=bean",
+                "crema.servers.basic.authenticator=basic",
+                "crema.servers.basic.users=agent,root",
+                "crema.servers.basic.users.agent.password=agent-secret",
+                "crema.servers.basic.users.agent.roles=user",
+                "crema.servers.basic.users.root.password=root-secret",
+                "crema.servers.basic.users.root.roles=user,admin",
                 "it.oidc.provider-uri=" + issuer,
                 "");
         return ShrinkWrap.create(WebArchive.class, name + ".war")
                 .addClasses(SecuredMcp.class, OpenMcp.class, DeniedMcp.class, SecuredFeatures.class,
                         OpenFeatures.class, DeniedFeatures.class, ApiApp.class, ApiResource.class, UiServlet.class,
-                        OidcConfig.class, KeyedMcp.class, KeyedAuthenticator.class, KeyedFeatures.class)
+                        OidcConfig.class, KeyedMcp.class, KeyedAuthenticator.class, KeyedFeatures.class, BasicMcp.class,
+                        BasicFeatures.class)
                 .addAsResource(new StringAsset(config), "META-INF/microprofile-config.properties")
                 .addAsWebInfResource(EmptyAsset.INSTANCE, "beans.xml")
                 .addAsLibrary(library(McpApplication.class, "crema.jar"))

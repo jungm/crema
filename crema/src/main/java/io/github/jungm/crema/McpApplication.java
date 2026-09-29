@@ -29,14 +29,22 @@ import jakarta.ws.rs.core.Application;
  * {@code 403}.
  * <p>
  * An {@code McpApplication} subclass that carries {@code @RolesAllowed} or {@code @DenyAll} declares a
- * <em>protected</em> MCP Server: every request needs a caller that Crema authenticates, either by an
- * {@link McpAuthenticator} bean bound to the MCP Server or by OAuth. Deployment fails if it has both or neither.
+ * <em>protected</em> MCP Server: every request needs a caller that Crema authenticates. The MicroProfile Config key
+ * {@code authenticator}, under {@code crema.default-server.} for the default MCP Server or
+ * {@code crema.servers.<name>.}, says how, and a protected MCP Server must set it:
+ * <ul>
+ * <li>{@code oauth}: OAuth bearer tokens, see below;</li>
+ * <li>{@code basic}: HTTP Basic authentication against the users named by {@code users}, each with a plaintext
+ * {@code users.<name>.password} and comma-separated {@code users.<name>.roles};</li>
+ * <li>{@code bean}: the {@link McpAuthenticator} bean bound to the MCP Server.</li>
+ * </ul>
+ * An open MCP Server may set {@code basic} or {@code bean} too; without the key it uses its
+ * {@link McpAuthenticator} if it has one.
  * <p>
  * With OAuth, every request needs an OAuth bearer token issued for the MCP Server, which Crema validates itself, and
- * the caller and its roles come from the token. It requires MicroProfile Config with these keys, under
- * {@code crema.default-server.} for the default MCP Server or {@code crema.servers.<name>.}:
+ * the caller and its roles come from the token. It is configured with these keys:
  * <ul>
- * <li>{@code issuer} (required for OAuth): the Authorization Server's issuer identifier;</li>
+ * <li>{@code issuer} (required): the Authorization Server's issuer identifier;</li>
  * <li>{@code jwks-uri}: its JWK set URL, read from its metadata by default;</li>
  * <li>{@code resource} (required): the MCP Endpoint's public URL, which tokens' audience must contain. It is never
  * derived from the request;</li>
@@ -54,8 +62,8 @@ import jakarta.ws.rs.core.Application;
  * Its Protected Resource Metadata (RFC 9728) is served at {@code <MCP Endpoint>/.well-known/oauth-protected-resource}
  * and advertised to clients as {@code <resource>/.well-known/oauth-protected-resource}.
  * <p>
- * On other MCP Servers, the caller and its roles are the ones the Runtime authenticated, unless an
- * {@link McpAuthenticator} authenticates the request.
+ * On an open MCP Server, the caller and its roles are the ones the Runtime authenticated, unless Basic
+ * authentication or an {@link McpAuthenticator} authenticates the request.
  * <p>
  * The Runtime doesn't know about the callers Crema authenticates: {@code @RolesAllowed} on EJBs, the Jakarta Security
  * {@code SecurityContext} and CDI's built-in {@code Principal} bean don't see them. Feature Methods receive the

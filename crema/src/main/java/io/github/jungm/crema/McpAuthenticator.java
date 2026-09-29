@@ -3,7 +3,8 @@ package io.github.jungm.crema;
 /**
  * Authenticates the callers of MCP Servers without OAuth, for example by an API key. An application declares one
  * as a CDI bean, bound to MCP Servers by {@code @McpServer} on its class like Features, or to the default MCP Server
- * without it:
+ * without it. A protected MCP Server uses it when its {@code authenticator} key is {@code bean}
+ * ({@code crema.default-server.authenticator=bean}); an open one also without the key:
  *
  * <pre>
  * &#64;ApplicationScoped
@@ -36,10 +37,9 @@ package io.github.jungm.crema;
  * <li>{@link McpAuthentication#rejected() rejected}: the answer is {@code 401} with
  * {@code WWW-Authenticate: Bearer error="invalid_token"}.</li>
  * </ul>
- * An exception or a {@code null} result counts as rejected and is logged. A protected MCP Server with an
- * authenticator uses no OAuth: it must not be configured with an {@code issuer}, and it serves no Protected Resource
- * Metadata. Comparing secrets is up to the authenticator; use {@link java.security.MessageDigest#isEqual} or
- * another constant-time comparison.
+ * An exception or a {@code null} result counts as rejected and is logged. An MCP Server with an authenticator
+ * serves no Protected Resource Metadata. Comparing secrets is up to the authenticator; use
+ * {@link java.security.MessageDigest#isEqual} or another constant-time comparison.
  * <p>
  * The Runtime doesn't see the callers an authenticator returns, just as it doesn't see bearer token callers.
  *

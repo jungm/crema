@@ -11,9 +11,11 @@ import java.net.URL;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.nio.charset.StandardCharsets;
 import java.text.ParseException;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.Base64;
 import java.util.Date;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -345,6 +347,34 @@ class ProtectedMcpServerIT {
         assertEquals("admin", text(tool("keyed", "admin", "Bearer admin-key")));
         assertEquals(404, send(HttpRequest.newBuilder(URI.create(keyed.endpoint()
                 + "/.well-known/oauth-protected-resource")).GET()).statusCode());
+    }
+
+    @Test
+    void basicAuthenticationAdmitsConfiguredUsers() {
+        McpClient basic = McpClient.at(base, "basic");
+        String challenge = "Basic realm=\"basic\", charset=\"UTF-8\"";
+        Exchange anonymous = basic.post("tools/list").send();
+        record("Basic, no credentials", anonymous);
+        assertRejected(401, challenge, anonymous);
+        Exchange wrong = basic.post("tools/list").header("Authorization", basicAuth("agent", "wrong")).send();
+        record("Basic, wrong password", wrong);
+        assertRejected(401, challenge, wrong);
+        assertRejected(401, challenge, basic.post("tools/list").header("Authorization", "Bearer " + AS.token(RESOURCE))
+                .send());
+
+        Exchange list = basic.post("tools/list").header("Authorization", basicAuth("agent", "agent-secret")).send();
+        record("Basic, tools/list", list);
+        assertEquals(Set.of("whoami"), names(list.result(), "tools"));
+        assertEquals("agent", text(tool("basic", "whoami", basicAuth("agent", "agent-secret"))));
+        Exchange forbidden = tool("basic", "admin", basicAuth("agent", "agent-secret"));
+        assertEquals(403, forbidden.status(), forbidden::describe);
+        assertEquals(List.of(), forbidden.response().headers().allValues("WWW-Authenticate"));
+        assertEquals("admin", text(tool("basic", "admin", basicAuth("root", "root-secret"))));
+    }
+
+    private static String basicAuth(String user, String password) {
+        return "Basic " + Base64.getEncoder().encodeToString((user + ":" + password)
+                .getBytes(StandardCharsets.UTF_8));
     }
 
     @Test

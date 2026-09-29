@@ -8,7 +8,6 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
 import java.util.Set;
-import java.util.logging.Logger;
 import java.util.regex.Pattern;
 
 import io.github.jungm.crema.internal.config.ConfigLookup;
@@ -16,9 +15,8 @@ import io.github.jungm.crema.internal.config.ConfigValues;
 import io.github.jungm.crema.internal.config.McpServerSettings;
 
 /**
- * The OAuth configuration of a protected MCP Server: one whose {@code McpApplication} subclass carries
- * {@code @RolesAllowed} or {@code @DenyAll}, and that has an {@code issuer} rather than an {@code McpAuthenticator}.
- * It comes from MicroProfile Config, under the MCP Server's key prefix.
+ * The OAuth configuration of a protected MCP Server whose {@code authenticator} is {@code oauth}. It comes from
+ * MicroProfile Config, under the MCP Server's key prefix.
  *
  * @param server the MCP Server's name for messages
  * @param issuer the Authorization Server's issuer identifier, which tokens' {@code iss} must equal
@@ -33,7 +31,7 @@ import io.github.jungm.crema.internal.config.McpServerSettings;
 public record Protection(String server, String issuer, URI jwksUri, String resource, String rolesClaim,
         String principalClaim, int clockSkewSeconds, List<String> scopes) {
 
-    private static final String ISSUER = "issuer";
+    static final String ISSUER = "issuer";
     private static final String JWKS_URI = "jwks-uri";
     private static final String ROLES_CLAIM = "roles-claim";
     private static final String PRINCIPAL_CLAIM = "principal-claim";
@@ -56,8 +54,6 @@ public record Protection(String server, String issuer, URI jwksUri, String resou
     private static final String DEFAULT_PRINCIPAL_CLAIM = "sub";
     private static final int DEFAULT_CLOCK_SKEW_SECONDS = 60;
 
-    private static final Logger LOG = Logger.getLogger(Protection.class.getName());
-
     public Protection {
         scopes = List.copyOf(scopes);
     }
@@ -70,29 +66,19 @@ public record Protection(String server, String issuer, URI jwksUri, String resou
     }
 
     /**
-     * Resolves the OAuth protection of the MCP Server that an {@code McpApplication} subclass declares. A protected
-     * MCP Server without an {@code issuer}, or without MicroProfile Config, has no OAuth protection; whether it has
-     * an {@code McpAuthenticator} instead is checked once the beans are known.
+     * Resolves the OAuth configuration of an MCP Server whose {@code authenticator} is {@code oauth}.
      *
+     * @param where names the MCP Server in problems
      * @param problems collects deployment problems
-     * @return the protection, or empty if the MCP Server isn't protected, has no {@code issuer} or is misconfigured
+     * @return the protection, or empty if it is misconfigured
      */
-    public static Optional<Protection> resolve(Class<?> application, McpServerSettings settings, ConfigLookup config,
+    static Optional<Protection> resolve(McpServerSettings settings, ConfigLookup config, String where,
             List<String> problems) {
         String prefix = McpServerSettings.keyPrefix(settings.name());
-        Optional<AccessRule> rule = AccessRule.ofApplication(application, problems);
-        if (rule.isEmpty() || !rule.get().restricts()) {
-            config.get(prefix + ISSUER).ifPresent(issuer -> LOG.warning("MCP Server '" + settings.wireName()
-                    + "' isn't protected, so " + prefix + ISSUER + " has no effect; put @RolesAllowed or @DenyAll "
-                    + "on McpApplication " + application.getName() + " to require bearer tokens"));
-            return Optional.empty();
-        }
-        String where = "McpApplication " + application.getName() + " (MCP Server '" + settings.wireName() + "')";
-        if (!config.isMicroProfile()) {
-            return Optional.empty();
-        }
-        Optional<String> issuer = config.get(prefix + ISSUER).map(String::trim).filter(value -> !value.isEmpty());
+        Optional<String> issuer = config.get(prefix + ISSUER).map(String::trim);
         if (issuer.isEmpty()) {
+            problems.add(where + " uses OAuth, but " + prefix + ISSUER
+                    + " isn't set; set it to the issuer identifier of the Authorization Server");
             return Optional.empty();
         }
         int before = problems.size();
@@ -101,7 +87,7 @@ public record Protection(String server, String issuer, URI jwksUri, String resou
                 .map(value -> checkUrl(value, prefix + JWKS_URI, where, false, problems)).orElse(null);
         String resource = settings.resource() == null ? "" : settings.resource().trim();
         if (resource.isEmpty()) {
-            problems.add(where + " is protected by @RolesAllowed or @DenyAll, but " + prefix + RESOURCE
+            problems.add(where + " uses OAuth, but " + prefix + RESOURCE
                     + " isn't set; set it to the MCP Endpoint's public URL, which tokens must be issued for");
         } else {
             checkResource(resource, prefix + RESOURCE, where, problems);

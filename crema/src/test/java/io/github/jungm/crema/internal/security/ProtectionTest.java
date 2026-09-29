@@ -23,7 +23,7 @@ import jakarta.annotation.security.PermitAll;
 import jakarta.annotation.security.RolesAllowed;
 
 /**
- * Detecting protected MCP Servers and resolving their configuration.
+ * Detecting protected MCP Servers and resolving their OAuth configuration.
  */
 class ProtectionTest {
 
@@ -61,7 +61,7 @@ class ProtectionTest {
 
     /**
      * MicroProfile Config with these values, plus {@link #RESOURCE} as the default MCP Server's resource unless
-     * they set one.
+     * they set one; the MCP Servers use OAuth.
      */
     private static ConfigLookup microProfile(Map<String, String> values) {
         Map<String, String> withResource = new HashMap<>(values);
@@ -70,7 +70,10 @@ class ProtectionTest {
     }
 
     private static ConfigLookup bareMicroProfile(Map<String, String> values) {
-        ConfigLookup map = MapConfig.of(values);
+        Map<String, String> withOAuth = new HashMap<>(values);
+        withOAuth.putIfAbsent("crema.default-server.authenticator", "oauth");
+        withOAuth.putIfAbsent("crema.servers.admin.authenticator", "oauth");
+        ConfigLookup map = MapConfig.of(withOAuth);
         return new ConfigLookup() {
             @Override
             public Optional<String> get(String key) {
@@ -87,7 +90,8 @@ class ProtectionTest {
     private Optional<Protection> resolve(Class<?> app, ConfigLookup config) {
         McpServerSettings settings = McpServerSettings.resolve(app.getAnnotation(McpServerInfo.class), config,
                 Optional::empty);
-        return Protection.resolve(app, settings, config, problems);
+        return AuthenticatorSetting.resolve(app, settings, config, problems) instanceof AuthenticatorSetting.OAuth oauth
+                ? Optional.of(oauth.protection()) : Optional.empty();
     }
 
     @Test
@@ -167,32 +171,18 @@ class ProtectionTest {
     }
 
     @Test
-    void onlyRolesAllowedOrDenyAllProtect() {
-        ConfigLookup config = microProfile(Map.of("crema.default-server.issuer", "https://as.example.com"));
-        assertEquals(Optional.empty(), resolve(Plain.class, config));
-        assertEquals(Optional.empty(), resolve(PermitAllApp.class, config));
-        assertTrue(resolve(Inherits.class, config).isPresent());
-        assertEquals(List.of(), problems);
-    }
-
-    /**
-     * Without MicroProfile Config there is no OAuth; whether the MCP Server has an McpAuthenticator instead is
-     * checked at deployment.
-     */
-    @Test
-    void noOAuthWithoutMicroProfileConfig() {
-        assertEquals(Optional.empty(), resolve(Protected.class,
-                MapConfig.of(Map.of("crema.default-server.issuer", "https://as.example.com"))));
+    void inheritedRolesAllowedProtects() {
+        assertTrue(resolve(Inherits.class, microProfile(Map.of("crema.default-server.issuer",
+                "https://as.example.com"))).isPresent());
         assertEquals(List.of(), problems);
     }
 
     @Test
-    void noOAuthWithoutAnIssuer() {
+    void oauthNeedsAnIssuer() {
         assertEquals(Optional.empty(), resolve(DenyAllApp.class,
                 microProfile(Map.of("crema.servers.admin.resource", RESOURCE))));
-        assertEquals(Optional.empty(), resolve(DenyAllApp.class,
-                microProfile(Map.of("crema.servers.admin.issuer", "  "))));
-        assertEquals(List.of(), problems);
+        assertEquals(1, problems.size());
+        assertTrue(problems.get(0).contains("crema.servers.admin.issuer isn't set"), problems.get(0));
     }
 
     @Test

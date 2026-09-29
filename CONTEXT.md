@@ -34,6 +34,10 @@ _Avoid_: user, subject, client
 An application bean implementing `McpAuthenticator` that decides the Caller of an MCP Server's requests from their headers, instead of OAuth.
 _Avoid_: auth provider, identity provider, login module
 
+**Authentication Mechanism**:
+How an MCP Server authenticates its Callers: OAuth, Basic, or its Authenticator; chosen by the `authenticator` key.
+_Avoid_: auth mode, auth type
+
 **MCP Client**:
 The AI application that connects to an MCP Server and calls its Features on behalf of a model or user.
 _Avoid_: agent, consumer, caller

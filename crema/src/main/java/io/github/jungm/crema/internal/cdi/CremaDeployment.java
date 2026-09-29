@@ -6,6 +6,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.function.Consumer;
+import java.util.function.Supplier;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -25,11 +26,12 @@ import io.github.jungm.crema.internal.model.McpServerRegistry;
 import io.github.jungm.crema.internal.protocol.Dispatcher;
 import io.github.jungm.crema.internal.protocol.Services;
 import io.github.jungm.crema.internal.security.Authenticator;
+import io.github.jungm.crema.internal.security.AuthenticatorSetting;
+import io.github.jungm.crema.internal.security.BasicMechanism;
 import io.github.jungm.crema.internal.security.BeanMechanism;
 import io.github.jungm.crema.internal.security.CremaAccessPolicy;
 import io.github.jungm.crema.internal.security.Mechanism;
 import io.github.jungm.crema.internal.security.OAuthMechanism;
-import io.github.jungm.crema.internal.security.Protection;
 import jakarta.servlet.ServletContext;
 import jakarta.servlet.ServletContextEvent;
 import jakarta.servlet.ServletContextListener;
@@ -86,15 +88,14 @@ public final class CremaDeployment {
      * with them the {@link IconLookup} are known.
      *
      * @param iconProvider the provider of {@code @Icons} on the subclass, or {@code null}
-     * @param protection the OAuth protection of its MCP Server, or {@code null} if it isn't protected or has no
-     *        {@code issuer}
+     * @param authenticator how its MCP Server authenticates callers
      */
     public record Declaration(Class<?> application, McpServerSettings settings,
-            Class<? extends IconProvider> iconProvider, Protection protection) {
+            Class<? extends IconProvider> iconProvider, AuthenticatorSetting authenticator) {
 
         public Declaration(Class<?> application, McpServerSettings settings,
                 Class<? extends IconProvider> iconProvider) {
-            this(application, settings, iconProvider, null);
+            this(application, settings, iconProvider, new AuthenticatorSetting.Unset());
         }
     }
 
@@ -233,21 +234,13 @@ public final class CremaDeployment {
         if (!problems.isEmpty()) {
             return problems;
         }
-        Map<Class<?>, Protection> protections = new HashMap<>();
-        for (Declaration declaration : declarations.declarations()) {
-            if (declaration.protection() != null) {
-                protections.put(declaration.application(), declaration.protection());
-            }
-        }
         Map<Class<?>, Authenticator> authenticators = bindAuthenticators(problems);
-        checkProtection(protections, authenticators, problems);
+        Map<Class<?>, Supplier<Mechanism>> chosen = chooseMechanisms(authenticators, problems);
         if (!problems.isEmpty()) {
             return problems;
         }
         Map<Class<?>, Mechanism> mechanisms = new HashMap<>();
-        protections.forEach((application, protection) -> mechanisms.put(application, new OAuthMechanism(protection)));
-        authenticators.forEach((application, authenticator) -> mechanisms.put(application,
-                new BeanMechanism(authenticator)));
+        chosen.forEach((application, mechanism) -> mechanisms.put(application, mechanism.get()));
         CremaAccessPolicy.Result policy = CremaAccessPolicy.create(result.registry().servers(), mechanisms);
         problems.addAll(policy.problems());
         if (!problems.isEmpty()) {
@@ -293,28 +286,41 @@ public final class CremaDeployment {
     }
 
     /**
-     * Checks that each protected MCP Server has either OAuth protection or an authenticator.
+     * Chooses how each MCP Server authenticates its callers, as its {@code authenticator} setting says, and checks
+     * that the {@code McpAuthenticator} beans agree: {@code bean} needs one, {@code oauth} and {@code basic} allow
+     * none, and without the setting an open MCP Server uses one if it has one.
+     *
+     * @return the mechanism of each MCP Server that has one, by {@code McpApplication} subclass, created on demand
      */
-    private static void checkProtection(Map<Class<?>, Protection> protections,
-            Map<Class<?>, Authenticator> authenticators, List<String> problems) {
+    private static Map<Class<?>, Supplier<Mechanism>> chooseMechanisms(Map<Class<?>, Authenticator> authenticators,
+            List<String> problems) {
+        Map<Class<?>, Supplier<Mechanism>> mechanisms = new HashMap<>();
         for (Declaration declaration : declarations.declarations()) {
             Class<?> application = declaration.application();
-            if (!Protection.isProtected(application)) {
-                continue;
-            }
             String where = "McpApplication " + application.getName() + " (MCP Server '"
                     + declaration.settings().wireName() + "')";
-            String prefix = McpServerSettings.keyPrefix(declaration.settings().name());
+            String key = McpServerSettings.keyPrefix(declaration.settings().name()) + AuthenticatorSetting.KEY;
             Authenticator authenticator = authenticators.get(application);
-            if (authenticator != null && protections.containsKey(application)) {
-                problems.add(where + " has both " + authenticator.describe() + " and " + prefix + "issuer; "
-                        + "remove one of them");
-            } else if (authenticator == null && !protections.containsKey(application)) {
-                problems.add(where + " is protected by @RolesAllowed or @DenyAll, but has neither an "
-                        + "McpAuthenticator nor " + prefix + "issuer; declare an McpAuthenticator bean for it, or "
-                        + "set " + prefix + "issuer and " + prefix + "resource with MicroProfile Config for OAuth");
+            AuthenticatorSetting setting = declaration.authenticator();
+            if (setting instanceof AuthenticatorSetting.Bean || setting instanceof AuthenticatorSetting.Unset) {
+                if (authenticator != null) {
+                    mechanisms.put(application, () -> new BeanMechanism(authenticator));
+                } else if (setting instanceof AuthenticatorSetting.Bean) {
+                    problems.add(where + ": " + key + " is bean, but no McpAuthenticator is bound to it; declare "
+                            + "one with " + (McpServer.DEFAULT.equals(declaration.settings().name()) ? "no @McpServer"
+                                    : "@McpServer(\"" + declaration.settings().name() + "\")"));
+                }
+            } else if (authenticator != null) {
+                problems.add(where + " has " + authenticator.describe() + ", but " + key + " isn't bean; set it "
+                        + "to bean, or remove the McpAuthenticator");
+            } else if (setting instanceof AuthenticatorSetting.OAuth oauth) {
+                mechanisms.put(application, () -> new OAuthMechanism(oauth.protection()));
+            } else if (setting instanceof AuthenticatorSetting.Basic basic) {
+                String realm = declaration.settings().wireName();
+                mechanisms.put(application, () -> new BasicMechanism(realm, basic.users()));
             }
         }
+        return mechanisms;
     }
 
     private static String display(String server) {

@@ -2,6 +2,8 @@
 
 Some applications want to protect an MCP Server without running an Authorization Server, for example with an API key that an MCP Client sends as a static header. Crema offers a public SPI for this: a CDI bean implementing `McpAuthenticator` that maps a request's header fields to a Caller with roles, to "no credentials" or to "rejected". A protected MCP Server has either an `issuer` (OAuth, ADR 0001) or an Authenticator, never both.
 
+[ADR 0003](0003-built-in-basic-authentication-and-an-explicit-authenticator-key.md) refines this: the `authenticator` key selects OAuth, Basic or the Authenticator.
+
 ## Considered Options
 
 - **The application's own Jakarta Security `HttpAuthenticationMechanism`** on an open MCP Server: already works for Feature-level `@RolesAllowed`, because open MCP Servers use the Runtime's caller. It isn't enough on its own. Jakarta EE 10 allows only one mechanism per application, so it collides with the application's own login (the reason ADR 0001 rejected a Crema mechanism), and it can't make the whole MCP Server require a caller, because `@RolesAllowed` on the `McpApplication` means OAuth.

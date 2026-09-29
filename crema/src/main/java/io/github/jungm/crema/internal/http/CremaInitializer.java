@@ -23,7 +23,7 @@ import io.github.jungm.crema.internal.cdi.CremaDeployment;
 import io.github.jungm.crema.internal.config.ConfigLookup;
 import io.github.jungm.crema.internal.config.CremaSettings;
 import io.github.jungm.crema.internal.config.McpServerSettings;
-import io.github.jungm.crema.internal.security.Protection;
+import io.github.jungm.crema.internal.security.AuthenticatorSetting;
 import jakarta.servlet.DispatcherType;
 import jakarta.servlet.FilterRegistration;
 import jakarta.servlet.ServletContainerInitializer;
@@ -66,7 +66,7 @@ public class CremaInitializer implements ServletContainerInitializer {
                     manifestVersion);
             declarations.add(new CremaDeployment.Declaration(type, server,
                     icons == null ? null : icons.iconProvider(),
-                    Protection.resolve(type, server, config, problems).orElse(null)));
+                    AuthenticatorSetting.resolve(type, server, config, problems)));
         }
         if (problems.isEmpty()) {
             problems.addAll(CremaDeployment.applicationsDiscovered(context,

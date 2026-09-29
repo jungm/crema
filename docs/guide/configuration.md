@@ -10,13 +10,17 @@ named one (`crema.servers.admin.title`, ...).
 | Key | Default | Meaning |
 |-----|---------|---------|
 | `<prefix>title`, `version`, `description`, `instructions`, `website-url` | from `@McpServerInfo` | Server information sent to clients |
-| `<prefix>issuer` | none | Issuer identifier of the Authorization Server; selects OAuth for a protected MCP Server without an `McpAuthenticator` |
-| `<prefix>resource` | none; required with `issuer` | Public URL of the MCP Endpoint; access tokens' `aud` must contain it |
+| `<prefix>authenticator` | none; required when protected | How the MCP Server authenticates callers: `oauth`, `basic` or `bean` (see [Security](security.md)) |
+| `<prefix>issuer` | none; required for `oauth` | Issuer identifier of the Authorization Server |
+| `<prefix>resource` | none; required for `oauth` | Public URL of the MCP Endpoint; access tokens' `aud` must contain it |
 | `<prefix>jwks-uri` | from the issuer's metadata | JWK set URL of the Authorization Server |
 | `<prefix>roles-claim` | `groups` | Dotted path of the claim that holds the caller's roles |
 | `<prefix>principal-claim` | `sub` | Dotted path of the claim that holds the caller's name; tokens without it as a non-empty string are rejected |
 | `<prefix>clock-skew-seconds` | `60` | Tolerated clock skew for `exp` and `nbf` |
 | `<prefix>scopes` | none | Comma-separated OAuth scopes MCP Clients should request, sent as `scopes_supported` and in `401` challenges |
+| `<prefix>users` | none; required for `basic` | Comma-separated names of the Basic authentication users |
+| `<prefix>users.<name>.password` | none; required for `basic` | The user's password, in plaintext |
+| `<prefix>users.<name>.roles` | none | Comma-separated roles of the user |
 | `crema.origin.allowed` | empty (loopback only) | Comma-separated `Origin`s that may call the MCP Endpoints; `*` disables the check |
 | `crema.cache.list-ttl-ms` | `300000` | `ttlMs` caching hint on `server/discover` and list results |
 | `crema.max-request-bytes` | `4194304` | Largest accepted request body; larger ones get `413` |
