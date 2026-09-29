@@ -14,9 +14,10 @@ import java.util.Map;
  * </pre>
  * <p>
  * A parameter of this type, or of type {@link Principal}, is {@code null} when the caller is anonymous. On a
- * protected MCP Server the caller is the subject of the validated bearer token: {@link #getName()} is the value of
- * the configured principal claim ({@code sub} by default), and {@link #claims()} holds all claims of the token. On
- * any other MCP Server the caller is the one the Runtime authenticated, and {@link #claims()} is empty. How MCP
+ * protected MCP Server with OAuth the caller is the subject of the validated bearer token: {@link #getName()} is the
+ * value of the configured principal claim ({@code sub} by default), and {@link #claims()} holds all claims of the
+ * token. A caller that an {@link McpAuthenticator} returns has the name and claims it was given. Otherwise the caller
+ * is the one the Runtime authenticated, and {@link #claims()} is empty. How MCP
  * Servers are protected, and what that means for the Runtime's view of the caller, is described at
  * {@link McpApplication}.
  */
@@ -25,8 +26,9 @@ public interface McpCaller extends Principal {
     /**
      * The claims of the validated access token, as parsed by Nimbus JOSE+JWT: JSON strings, numbers and booleans
      * as {@code String}, {@code Number} and {@code Boolean}, arrays as {@code List}, objects as {@code Map}, and
-     * the time claims {@code exp}, {@code nbf} and {@code iat} as {@code java.util.Date}. Empty unless the MCP
-     * Server is protected. The map is unmodifiable.
+     * the time claims {@code exp}, {@code nbf} and {@code iat} as {@code java.util.Date}. For a caller of an
+     * {@link McpAuthenticator}, the claims of its {@link McpAuthentication}. Empty for the Runtime's caller. The map
+     * is unmodifiable.
      */
     Map<String, Object> claims();
 }

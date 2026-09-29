@@ -9,26 +9,27 @@ import java.util.Set;
 import io.github.jungm.crema.McpCaller;
 
 /**
- * A caller authenticated by a validated bearer token for one protected MCP Server. Its name and roles come from
- * the token's claims; the Runtime's view of the caller plays no part.
+ * A caller that Crema authenticated for one MCP Server, by a validated bearer token or by the MCP Server's
+ * {@code McpAuthenticator}. Its name and roles come from the token's claims or the authenticator's result; the
+ * Runtime's view of the caller plays no part.
  */
-final class TokenCaller implements Caller {
+final class CremaCaller implements Caller {
 
     private final Class<?> application;
     private final CallerPrincipal principal;
     private final Set<String> roles;
 
     /**
-     * @param application the {@code McpApplication} subclass of the MCP Server the token was validated for
+     * @param application the {@code McpApplication} subclass of the MCP Server the caller was authenticated for
      */
-    TokenCaller(Class<?> application, CallerPrincipal principal, Set<String> roles) {
+    CremaCaller(Class<?> application, CallerPrincipal principal, Set<String> roles) {
         this.application = application;
         this.principal = principal;
         this.roles = Set.copyOf(roles);
     }
 
     /**
-     * Whether the token was validated for the MCP Server of an {@code McpApplication} subclass.
+     * Whether the caller was authenticated for the MCP Server of an {@code McpApplication} subclass.
      */
     boolean isFor(Class<?> application) {
         return this.application == application;

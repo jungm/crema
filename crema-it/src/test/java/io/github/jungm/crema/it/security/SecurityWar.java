@@ -18,6 +18,9 @@ import io.github.jungm.crema.it.security.app.ApiApp;
 import io.github.jungm.crema.it.security.app.ApiResource;
 import io.github.jungm.crema.it.security.app.DeniedFeatures;
 import io.github.jungm.crema.it.security.app.DeniedMcp;
+import io.github.jungm.crema.it.security.app.KeyedAuthenticator;
+import io.github.jungm.crema.it.security.app.KeyedFeatures;
+import io.github.jungm.crema.it.security.app.KeyedMcp;
 import io.github.jungm.crema.it.security.app.OidcConfig;
 import io.github.jungm.crema.it.security.app.OpenFeatures;
 import io.github.jungm.crema.it.security.app.OpenMcp;
@@ -27,8 +30,9 @@ import io.github.jungm.crema.it.security.app.UiServlet;
 
 /**
  * The WAR for the security tests: the protected MCP Server at {@code /mcp}, a protected {@code @DenyAll} one at
- * {@code /denied}, an open one at {@code /open}, a JAX-RS API at {@code /api}, and a servlet at {@code /ui} protected by Jakarta Security's OpenID Connect mechanism. Crema,
- * Nimbus and the MCP server API are in {@code WEB-INF/lib}, as in a real application.
+ * {@code /denied}, one protected by an {@code McpAuthenticator} at {@code /keyed}, an open one at {@code /open}, a
+ * JAX-RS API at {@code /api}, and a servlet at {@code /ui} protected by Jakarta Security's OpenID Connect mechanism.
+ * Crema, Nimbus and the MCP server API are in {@code WEB-INF/lib}, as in a real application.
  */
 final class SecurityWar {
 
@@ -51,7 +55,7 @@ final class SecurityWar {
         return ShrinkWrap.create(WebArchive.class, name + ".war")
                 .addClasses(SecuredMcp.class, OpenMcp.class, DeniedMcp.class, SecuredFeatures.class,
                         OpenFeatures.class, DeniedFeatures.class, ApiApp.class, ApiResource.class, UiServlet.class,
-                        OidcConfig.class)
+                        OidcConfig.class, KeyedMcp.class, KeyedAuthenticator.class, KeyedFeatures.class)
                 .addAsResource(new StringAsset(config), "META-INF/microprofile-config.properties")
                 .addAsWebInfResource(EmptyAsset.INSTANCE, "beans.xml")
                 .addAsLibrary(library(McpApplication.class, "crema.jar"))

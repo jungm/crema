@@ -37,7 +37,7 @@ These parameter types are supplied by Crema, not by the client:
 | `org.mcpjava.server.progress.Progress` | Sends progress notifications (see below) |
 | `org.mcpjava.server.Cancellation` | Accepted, but never reports a cancellation (see [Limitations](limitations.md)) |
 | `org.mcpjava.server.completion.CompletionContext` | Completion Methods only: the other Arguments already entered |
-| `io.github.jungm.crema.McpCaller` | The caller, with the token's claims on a protected MCP Server; `null` if anonymous |
+| `io.github.jungm.crema.McpCaller` | The caller, with the token's or the Authenticator's claims; `null` if anonymous |
 | `java.security.Principal` | The caller; `null` if anonymous |
 
 A Tool reports progress when the client asked for it by sending a `progressToken`. The response is then streamed as

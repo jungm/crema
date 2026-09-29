@@ -319,6 +319,35 @@ class ProtectedMcpServerIT {
     }
 
     @Test
+    void authenticatorAdmitsCallersByApiKey() {
+        McpClient keyed = McpClient.at(base, "keyed");
+        Exchange anonymous = keyed.post("tools/list").send();
+        record("McpAuthenticator, no key", anonymous);
+        assertRejected(401, "Bearer", anonymous);
+        Exchange wrong = keyed.post("tools/list").header("X-Api-Key", "wrong").send();
+        record("McpAuthenticator, wrong key", wrong);
+        assertRejected(401, "Bearer error=\"invalid_token\"", wrong);
+        assertRejected(401, "Bearer error=\"invalid_token\"", keyed.post("tools/list")
+                .header("Authorization", "Bearer " + AS.token(RESOURCE)).send());
+
+        Exchange list = keyed.post("tools/list").header("X-Api-Key", "user-key").send();
+        record("McpAuthenticator, tools/list", list);
+        assertEquals(Set.of("whoami"), names(list.result(), "tools"));
+        assertEquals("private", list.result().getString("cacheScope"));
+        assertEquals("agent {tenant=t1}", text(keyed.post("tools/call")
+                .params(Json.createObjectBuilder().add("name", "whoami").build()).header("X-Api-Key", "user-key")
+                .send()));
+        Exchange forbidden = keyed.post("tools/call").params(Json.createObjectBuilder().add("name", "admin").build())
+                .header("X-Api-Key", "user-key").send();
+        record("McpAuthenticator, missing role", forbidden);
+        assertEquals(403, forbidden.status(), forbidden::describe);
+        assertEquals(List.of(), forbidden.response().headers().allValues("WWW-Authenticate"));
+        assertEquals("admin", text(tool("keyed", "admin", "Bearer admin-key")));
+        assertEquals(404, send(HttpRequest.newBuilder(URI.create(keyed.endpoint()
+                + "/.well-known/oauth-protected-resource")).GET()).statusCode());
+    }
+
+    @Test
     void uiStillRedirectsToLogin() {
         HttpResponse<String> response = send(HttpRequest.newBuilder(URI.create(base + "ui")).GET());
         String location = response.headers().firstValue("Location").orElse("");

@@ -34,7 +34,6 @@ public final class McpTransport {
     private static final Logger LOG = Logger.getLogger(McpTransport.class.getName());
 
     private static final String ORIGIN = "Origin";
-    private static final String AUTHORIZATION = "Authorization";
 
     private final McpServerRegistry registry;
     private final Dispatcher dispatcher;
@@ -74,7 +73,7 @@ public final class McpTransport {
                 return HttpReply.error(new McpError(McpError.INVALID_REQUEST, "Origin not allowed: " + origin,
                         null, 403));
             }
-            Caller admitted = access().authenticate(server, caller, request.headers().all(AUTHORIZATION));
+            Caller admitted = access().authenticate(server, caller, request.headers()::all);
             if (!"POST".equals(request.method())) {
                 return HttpReply.empty(405).withHeader("Allow", "POST");
             }

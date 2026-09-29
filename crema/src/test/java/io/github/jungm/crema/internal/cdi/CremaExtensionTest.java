@@ -9,9 +9,11 @@ import java.io.UncheckedIOException;
 import java.lang.reflect.Proxy;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import org.jboss.weld.environment.se.Weld;
@@ -29,6 +31,10 @@ import org.mcpjava.server.content.TextContent;
 import org.mcpjava.server.prompts.Prompt;
 import org.mcpjava.server.tools.Tool;
 
+import io.github.jungm.crema.McpAuthentication;
+import io.github.jungm.crema.McpAuthenticator;
+import io.github.jungm.crema.McpCaller;
+import io.github.jungm.crema.McpCredentials;
 import io.github.jungm.crema.internal.config.ConfigLookup;
 import io.github.jungm.crema.internal.config.CremaSettings;
 import io.github.jungm.crema.internal.config.McpServerSettings;
@@ -39,7 +45,9 @@ import io.github.jungm.crema.internal.http.McpTransport;
 import io.github.jungm.crema.internal.model.McpServerModel;
 import io.github.jungm.crema.internal.json.Json;
 import io.github.jungm.crema.internal.security.Caller;
+import io.github.jungm.crema.internal.security.Protection;
 import jakarta.annotation.PreDestroy;
+import jakarta.annotation.security.RolesAllowed;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.enterprise.context.Dependent;
 import jakarta.enterprise.inject.spi.DeploymentException;
@@ -142,6 +150,53 @@ class CremaExtensionTest {
         }
     }
 
+    @RolesAllowed("user")
+    static class ProtectedApp {
+    }
+
+    @Dependent
+    public static class Whoami {
+        @Tool(description = "Who calls")
+        public String whoami(McpCaller caller) {
+            return caller.getName();
+        }
+    }
+
+    /**
+     * Accepts the key {@code k} for {@code agent}, and counts with an injected bean.
+     */
+    @ApplicationScoped
+    public static class KeyAuthenticator implements McpAuthenticator {
+        @Inject
+        Counter counter;
+
+        @Override
+        public McpAuthentication authenticate(McpCredentials credentials) {
+            counter.next();
+            return credentials.header("X-Api-Key")
+                    .map(key -> key.equals("k") ? McpAuthentication.caller("agent", Set.of("user"))
+                            : McpAuthentication.rejected())
+                    .orElse(McpAuthentication.none());
+        }
+    }
+
+    @ApplicationScoped
+    public static class OtherAuthenticator implements McpAuthenticator {
+        @Override
+        public McpAuthentication authenticate(McpCredentials credentials) {
+            return McpAuthentication.none();
+        }
+    }
+
+    @ApplicationScoped
+    @McpServer("elsewhere")
+    public static class UnboundAuthenticator implements McpAuthenticator {
+        @Override
+        public McpAuthentication authenticate(McpCredentials credentials) {
+            return McpAuthentication.none();
+        }
+    }
+
     private static final List<Object> LISTENERS = new ArrayList<>();
     private static final ServletContext CONTEXT = context(CremaExtensionTest.class.getClassLoader());
 
@@ -203,6 +258,57 @@ class CremaExtensionTest {
             assertTrue(problems.get(0).contains("is bound to the MCP Server 'elsewhere'"), problems.get(0));
             assertEquals(Optional.empty(), CremaDeployment.transport());
         }
+    }
+
+    @Test
+    void authenticatorsAreBeans() {
+        assertEquals(List.of(), CremaDeployment.applicationsDiscovered(CONTEXT, declarations(ProtectedApp.class,
+                null)));
+        try (WeldContainer container = weld(Whoami.class, KeyAuthenticator.class, Counter.class).initialize()) {
+            McpTransport transport = CremaDeployment.transport().orElseThrow();
+            McpServerModel server = transport.server(ProtectedApp.class).orElseThrow();
+            assertEquals("agent", text(call(transport, server, "tools/call", "whoami", Map.of("X-Api-Key",
+                    List.of("k")))));
+            assertEquals(401, call(transport, server, "tools/call", "whoami").status());
+            assertEquals(401, call(transport, server, "tools/call", "whoami", Map.of("X-Api-Key",
+                    List.of("x"))).status());
+            assertEquals(4, container.select(Counter.class).get().next(), "the authenticator is injected");
+        }
+    }
+
+    @Test
+    void protectedServerNeedsAnAuthenticatorOrAnIssuer() {
+        CremaDeployment.applicationsDiscovered(CONTEXT, declarations(ProtectedApp.class, null));
+        DeploymentException e = assertThrows(DeploymentException.class, () -> weld(Whoami.class).initialize());
+        assertTrue(e.getMessage().contains("has neither an McpAuthenticator nor crema.default-server.issuer"),
+                e.getMessage());
+    }
+
+    @Test
+    void protectedServerCantHaveBothAnAuthenticatorAndAnIssuer() {
+        CremaDeployment.applicationsDiscovered(CONTEXT, declarations(ProtectedApp.class, new Protection("default",
+                "https://as.example.com", null, "https://mcp.example.com/mcp", "groups", "sub", 60, List.of())));
+        DeploymentException e = assertThrows(DeploymentException.class,
+                () -> weld(Whoami.class, KeyAuthenticator.class, Counter.class).initialize());
+        assertTrue(e.getMessage().contains("has both McpAuthenticator " + KeyAuthenticator.class.getName()
+                + " and crema.default-server.issuer"), e.getMessage());
+    }
+
+    @Test
+    void anMcpServerHasAtMostOneAuthenticator() {
+        CremaDeployment.applicationsDiscovered(CONTEXT, declarations());
+        DeploymentException e = assertThrows(DeploymentException.class,
+                () -> weld(KeyAuthenticator.class, OtherAuthenticator.class, Counter.class).initialize());
+        assertTrue(e.getMessage().contains("an MCP Server has at most one McpAuthenticator"), e.getMessage());
+    }
+
+    @Test
+    void authenticatorsForUnknownServersFailDeployment() {
+        CremaDeployment.applicationsDiscovered(CONTEXT, declarations());
+        DeploymentException e = assertThrows(DeploymentException.class,
+                () -> weld(UnboundAuthenticator.class).initialize());
+        assertTrue(e.getMessage().contains("McpAuthenticator " + UnboundAuthenticator.class.getName()
+                + ": is bound to the MCP Server 'elsewhere'"), e.getMessage());
     }
 
     @Test
@@ -270,20 +376,31 @@ class CremaExtensionTest {
     }
 
     private static CremaDeployment.Declarations declarations() {
-        return new CremaDeployment.Declarations(List.of(new CremaDeployment.Declaration(App.class,
-                McpServerSettings.resolve(null, ConfigLookup.none(), Optional::empty), null)),
+        return declarations(App.class, null);
+    }
+
+    private static CremaDeployment.Declarations declarations(Class<?> application, Protection protection) {
+        return new CremaDeployment.Declarations(List.of(new CremaDeployment.Declaration(application,
+                McpServerSettings.resolve(null, ConfigLookup.none(), Optional::empty), null, protection)),
                 CremaSettings.defaults());
     }
 
     private static HttpReply call(McpTransport transport, McpServerModel server, String method, String name) {
+        return call(transport, server, method, name, Map.of());
+    }
+
+    private static HttpReply call(McpTransport transport, McpServerModel server, String method, String name,
+            Map<String, List<String>> extraHeaders) {
         String params = name == null ? "" : ",\"name\":\"" + name + "\"";
         String body = "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"" + method + "\",\"params\":{\"_meta\":{"
                 + "\"io.modelcontextprotocol/protocolVersion\":\"2026-07-28\","
                 + "\"io.modelcontextprotocol/clientCapabilities\":{}}" + params + "}}";
-        Map<String, List<String>> headers = name == null
-                ? Map.of("MCP-Protocol-Version", List.of("2026-07-28"), "Mcp-Method", List.of(method))
-                : Map.of("MCP-Protocol-Version", List.of("2026-07-28"), "Mcp-Method", List.of(method), "Mcp-Name",
-                        List.of(name));
+        Map<String, List<String>> headers = new HashMap<>(extraHeaders);
+        headers.put("MCP-Protocol-Version", List.of("2026-07-28"));
+        headers.put("Mcp-Method", List.of(method));
+        if (name != null) {
+            headers.put("Mcp-Name", List.of(name));
+        }
         try {
             return (HttpReply) transport.handle(server, HttpRequest.post(body.getBytes(StandardCharsets.UTF_8),
                     Headers.of(headers)), Caller.ANONYMOUS);

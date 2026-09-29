@@ -220,7 +220,7 @@ final class Fixture {
         Map<Class<?>, Protection> protections = new HashMap<>();
         protections.put(ProtectedApp.class, defaultProtection);
         protections.put(OtherApp.class, otherProtection);
-        CremaAccessPolicy.Result result = CremaAccessPolicy.create(registry.servers(), protections, FAST);
+        CremaAccessPolicy.Result result = CremaAccessPolicy.create(registry.servers(), protections, Map.of(), FAST);
         assertEquals(List.of(), result.problems());
         policy = result.policy();
         transport = new McpTransport(registry, deployment.dispatcher(policy));
@@ -273,6 +273,14 @@ final class Fixture {
      */
     Exchange call(McpServerModel server, RequestCaller caller, String method, String params, String name,
             String meta) {
+        return call(transport, server, caller, method, params, name, meta);
+    }
+
+    /**
+     * @param meta further {@code _meta} members, each preceded by a comma
+     */
+    static Exchange call(McpTransport transport, McpServerModel server, RequestCaller caller, String method,
+            String params, String name, String meta) {
         String body = "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"" + method + "\",\"params\":{\"_meta\":{"
                 + "\"io.modelcontextprotocol/protocolVersion\":\"2026-07-28\","
                 + "\"io.modelcontextprotocol/clientCapabilities\":{}" + meta + "}" + params + "}}";
@@ -344,6 +352,14 @@ final class Fixture {
 
         static RequestCaller bearer(String token) {
             return withAuthorization("Bearer " + token);
+        }
+
+        /**
+         * Adds a header field to the request.
+         */
+        RequestCaller header(String name, String... values) {
+            headers.put(name, List.of(values));
+            return this;
         }
 
         @Override

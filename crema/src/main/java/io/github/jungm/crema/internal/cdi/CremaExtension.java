@@ -15,6 +15,7 @@ import io.github.jungm.crema.internal.invoke.ContentEncoders;
 import io.github.jungm.crema.internal.invoke.Mapping;
 import io.github.jungm.crema.internal.model.FeatureScanner;
 import io.github.jungm.crema.internal.model.IconLookup;
+import io.github.jungm.crema.internal.security.Authenticator;
 import jakarta.enterprise.context.spi.CreationalContext;
 import jakarta.enterprise.event.Observes;
 import jakarta.enterprise.inject.spi.AfterDeploymentValidation;
@@ -26,8 +27,8 @@ import jakarta.enterprise.inject.spi.Extension;
 import jakarta.enterprise.inject.spi.ProcessManagedBean;
 
 /**
- * Discovers Feature Methods, Completion Methods and {@link ContentEncoder}s on managed beans, and validates them
- * after deployment validation. Each problem becomes a deployment problem.
+ * Discovers Feature Methods, Completion Methods, {@link ContentEncoder}s and {@code McpAuthenticator}s on managed
+ * beans, and validates them after deployment validation. Each problem becomes a deployment problem.
  */
 public class CremaExtension implements Extension {
 
@@ -36,6 +37,7 @@ public class CremaExtension implements Extension {
 
     private final List<Found> found = new ArrayList<>();
     private final List<Bean<?>> encoders = new ArrayList<>();
+    private final List<Bean<?>> authenticators = new ArrayList<>();
 
     <T> void discover(@Observes ProcessManagedBean<T> event) {
         Class<?> beanClass = event.getAnnotatedBeanClass().getJavaClass();
@@ -46,6 +48,9 @@ public class CremaExtension implements Extension {
         }
         if (ContentEncoder.class.isAssignableFrom(beanClass)) {
             encoders.add(event.getBean());
+        }
+        if (Authenticator.is(beanClass)) {
+            authenticators.add(event.getBean());
         }
     }
 
@@ -61,11 +66,15 @@ public class CremaExtension implements Extension {
                 .map(bean -> new ContentEncoders.Candidate(encodedType(bean),
                         new CdiInstanceSource(beanManager, bean)))
                 .toList();
+        List<Authenticator> bound = authenticators.stream()
+                .map(bean -> Authenticator.of(bean.getBeanClass(), new CdiInstanceSource(beanManager, bean)))
+                .toList();
         CremaDeployment.featuresDiscovered(new CremaDeployment.Catalog(scanner.features(), scanner.completions(),
-                mapping, new ContentEncoders(() -> candidates), icons),
+                mapping, new ContentEncoders(() -> candidates), icons, bound),
                 problem -> event.addDeploymentProblem(new DeploymentException(problem)));
         found.clear();
         encoders.clear();
+        authenticators.clear();
     }
 
     /**

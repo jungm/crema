@@ -10,8 +10,8 @@ named one (`crema.servers.admin.title`, ...).
 | Key | Default | Meaning |
 |-----|---------|---------|
 | `<prefix>title`, `version`, `description`, `instructions`, `website-url` | from `@McpServerInfo` | Server information sent to clients |
-| `<prefix>issuer` | none; required when protected | Issuer identifier of the Authorization Server |
-| `<prefix>resource` | none; required when protected | Public URL of the MCP Endpoint; access tokens' `aud` must contain it |
+| `<prefix>issuer` | none | Issuer identifier of the Authorization Server; selects OAuth for a protected MCP Server without an `McpAuthenticator` |
+| `<prefix>resource` | none; required with `issuer` | Public URL of the MCP Endpoint; access tokens' `aud` must contain it |
 | `<prefix>jwks-uri` | from the issuer's metadata | JWK set URL of the Authorization Server |
 | `<prefix>roles-claim` | `groups` | Dotted path of the claim that holds the caller's roles |
 | `<prefix>principal-claim` | `sub` | Dotted path of the claim that holds the caller's name; tokens without it as a non-empty string are rejected |

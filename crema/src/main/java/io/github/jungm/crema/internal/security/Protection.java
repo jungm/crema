@@ -2,6 +2,7 @@ package io.github.jungm.crema.internal.security;
 
 import java.net.URI;
 import java.net.URISyntaxException;
+import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
@@ -15,8 +16,9 @@ import io.github.jungm.crema.internal.config.ConfigValues;
 import io.github.jungm.crema.internal.config.McpServerSettings;
 
 /**
- * The configuration of a protected MCP Server: one whose {@code McpApplication} subclass carries
- * {@code @RolesAllowed} or {@code @DenyAll}. It comes from MicroProfile Config, under the MCP Server's key prefix.
+ * The OAuth configuration of a protected MCP Server: one whose {@code McpApplication} subclass carries
+ * {@code @RolesAllowed} or {@code @DenyAll}, and that has an {@code issuer} rather than an {@code McpAuthenticator}.
+ * It comes from MicroProfile Config, under the MCP Server's key prefix.
  *
  * @param server the MCP Server's name for messages
  * @param issuer the Authorization Server's issuer identifier, which tokens' {@code iss} must equal
@@ -61,10 +63,19 @@ public record Protection(String server, String issuer, URI jwksUri, String resou
     }
 
     /**
-     * Resolves the protection of the MCP Server that an {@code McpApplication} subclass declares.
+     * Whether an {@code McpApplication} subclass declares a protected MCP Server.
+     */
+    public static boolean isProtected(Class<?> application) {
+        return AccessRule.ofApplication(application, new ArrayList<>()).map(AccessRule::restricts).orElse(false);
+    }
+
+    /**
+     * Resolves the OAuth protection of the MCP Server that an {@code McpApplication} subclass declares. A protected
+     * MCP Server without an {@code issuer}, or without MicroProfile Config, has no OAuth protection; whether it has
+     * an {@code McpAuthenticator} instead is checked once the beans are known.
      *
      * @param problems collects deployment problems
-     * @return the protection, or empty if the MCP Server isn't protected or is misconfigured
+     * @return the protection, or empty if the MCP Server isn't protected, has no {@code issuer} or is misconfigured
      */
     public static Optional<Protection> resolve(Class<?> application, McpServerSettings settings, ConfigLookup config,
             List<String> problems) {
@@ -78,18 +89,14 @@ public record Protection(String server, String issuer, URI jwksUri, String resou
         }
         String where = "McpApplication " + application.getName() + " (MCP Server '" + settings.wireName() + "')";
         if (!config.isMicroProfile()) {
-            problems.add(where + " is protected by @RolesAllowed or @DenyAll, which requires MicroProfile Config to "
-                    + "configure " + prefix + ISSUER + ", but MicroProfile Config isn't available");
+            return Optional.empty();
+        }
+        Optional<String> issuer = config.get(prefix + ISSUER).map(String::trim).filter(value -> !value.isEmpty());
+        if (issuer.isEmpty()) {
             return Optional.empty();
         }
         int before = problems.size();
-        Optional<String> issuer = config.get(prefix + ISSUER).map(String::trim);
-        if (issuer.isEmpty()) {
-            problems.add(where + " is protected by @RolesAllowed or @DenyAll, but " + prefix + ISSUER
-                    + " isn't set; set it to the issuer identifier of the Authorization Server");
-        } else {
-            checkUrl(issuer.get(), prefix + ISSUER, where, true, problems);
-        }
+        checkUrl(issuer.get(), prefix + ISSUER, where, true, problems);
         URI jwksUri = config.get(prefix + JWKS_URI).map(String::trim)
                 .map(value -> checkUrl(value, prefix + JWKS_URI, where, false, problems)).orElse(null);
         String resource = settings.resource() == null ? "" : settings.resource().trim();

@@ -425,9 +425,9 @@ class BearerTokenTest {
     void claimsAreReadByDottedPath() {
         Map<String, Object> claims = Map.of("realm_access", Map.of("roles", List.of("a", "b")),
                 "https://example.com/roles", "c", "roles", List.of("d", 1));
-        assertEquals(java.util.Set.of("a", "b"), TokenCaller.roles(TokenCaller.claim(claims, "realm_access.roles")));
-        assertEquals(java.util.Set.of("c"), TokenCaller.roles(TokenCaller.claim(claims, "https://example.com/roles")));
-        assertEquals(java.util.Set.of("d"), TokenCaller.roles(TokenCaller.claim(claims, "roles")));
-        assertEquals(java.util.Set.of(), TokenCaller.roles(TokenCaller.claim(claims, "realm_access.missing.x")));
+        assertEquals(java.util.Set.of("a", "b"), CremaCaller.roles(CremaCaller.claim(claims, "realm_access.roles")));
+        assertEquals(java.util.Set.of("c"), CremaCaller.roles(CremaCaller.claim(claims, "https://example.com/roles")));
+        assertEquals(java.util.Set.of("d"), CremaCaller.roles(CremaCaller.claim(claims, "roles")));
+        assertEquals(java.util.Set.of(), CremaCaller.roles(CremaCaller.claim(claims, "realm_access.missing.x")));
     }
 }

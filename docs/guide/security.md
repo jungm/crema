@@ -17,13 +17,16 @@ means any authenticated caller.
   confidentiality: calling one answers `403`, not "unknown".
 - On an open MCP Server the caller and roles are those of the request's JAX-RS `SecurityContext`
   (`getUserPrincipal()` and `isUserInRole`), that is, whoever your Runtime authenticated, for example via a login
-  configured for the WAR.
+  configured for the WAR. An [Authenticator](#protecting-an-mcp-server-without-oauth) replaces it.
 
 ## Protecting an MCP Server with OAuth
 
-MCP Clients authenticate with OAuth access tokens. An `McpApplication` subclass annotated with `@RolesAllowed` or
-`@DenyAll` declares a **protected** MCP Server: every request needs a bearer token (a signed JWT) issued for it, and
-Crema validates the token itself. Your Runtime needs no security configuration for this, and your application can
+An `McpApplication` subclass annotated with `@RolesAllowed` or `@DenyAll` declares a **protected** MCP Server. It is
+protected either by OAuth, when `issuer` is configured, or by an
+[Authenticator](#protecting-an-mcp-server-without-oauth). Deployment fails if it has both or neither.
+
+With OAuth, MCP Clients authenticate with OAuth access tokens: every request needs a bearer token (a signed JWT)
+issued for the MCP Server, and Crema validates the token itself. Your Runtime needs no security configuration for this, and your application can
 keep its own login (for example `@OpenIdAuthenticationMechanismDefinition`) for other paths.
 
 ```java
@@ -73,8 +76,60 @@ public List<Order> myOrders(McpCaller caller) {
 }
 ```
 
-**The Runtime doesn't see token callers.** Crema authenticates them for MCP requests only, so `@RolesAllowed` on EJBs,
-the Jakarta Security `SecurityContext` and the injectable CDI `Principal` still see an anonymous caller. Pass
+## Protecting an MCP Server without OAuth
+
+If you don't want to run an Authorization Server, for example because your MCP Clients use a fixed API key, declare
+an `McpAuthenticator` bean. It gets the request's header fields and returns the caller with its roles,
+`none()` for no credentials, or `rejected()` for invalid ones:
+
+```java
+@ApplicationScoped
+@McpServer("ops") // the MCP Server it authenticates; the default MCP Server without it
+public class OpsApiKeys implements McpAuthenticator {
+
+    @Inject
+    @ConfigProperty(name = "ops.api-key")
+    String key;
+
+    @Override
+    public McpAuthentication authenticate(McpCredentials credentials) {
+        return credentials.bearerToken() // or credentials.header("X-Api-Key")
+                .map(token -> MessageDigest.isEqual(token.getBytes(UTF_8), key.getBytes(UTF_8))
+                        ? McpAuthentication.caller("ops-agent", Set.of("admin"))
+                        : McpAuthentication.rejected())
+                .orElse(McpAuthentication.none());
+    }
+}
+```
+
+```java
+@ApplicationPath("ops")
+@McpServerInfo(name = "ops")
+@RolesAllowed("admin")
+public class OpsMcp extends McpApplication {
+}
+```
+
+- On a protected MCP Server, `none()` is answered with `401` and `WWW-Authenticate: Bearer`. On an open MCP Server
+  the request falls back to the caller your Runtime authenticated, so an Authenticator can also just add callers there.
+- `rejected()`, an exception or `null` is answered with `401` and `WWW-Authenticate: Bearer error="invalid_token"`.
+  A missing role is a plain `403`.
+- If the request repeats a header field the Authenticator reads, or sends a malformed `Bearer` credential, Crema
+  rejects it whatever the Authenticator returns.
+- No Protected Resource Metadata is served and challenges don't point to one. Configure the key in the MCP Client,
+  as a bearer token or a static header. `Authorization: Bearer` is what most MCP Clients support.
+- Compare secrets in constant time (`MessageDigest.isEqual`), and only trust identity headers such as `X-User` if a
+  proxy in front of the Runtime strips them from client requests.
+- Claims you pass to `McpAuthentication.caller(name, roles, claims)` are what `McpCaller.claims()` returns.
+
+See [ADR 0002](../adr/0002-authenticator-spi-for-callers-without-oauth.md) for why this is an SPI rather than
+configuration.
+
+## The caller and the Runtime
+
+**The Runtime doesn't see token or Authenticator callers.** Crema authenticates them for MCP requests only, so
+`@RolesAllowed` on EJBs, the Jakarta Security `SecurityContext` and the injectable CDI `Principal` still see an
+anonymous caller. Pass
 `McpCaller` on explicitly where you need it. Tokens are never forwarded anywhere. See
 [ADR 0001](../adr/0001-crema-validates-bearer-tokens-with-nimbus.md) for why Crema validates tokens itself instead
 of using the Runtime's MicroProfile JWT.

@@ -30,6 +30,10 @@ _Avoid_: IdP, OIDC provider, Keycloak
 The authenticated principal on whose behalf an MCP Client sends a request, or anonymous.
 _Avoid_: user, subject, client
 
+**Authenticator**:
+An application bean implementing `McpAuthenticator` that decides the Caller of an MCP Server's requests from their headers, instead of OAuth.
+_Avoid_: auth provider, identity provider, login module
+
 **MCP Client**:
 The AI application that connects to an MCP Server and calls its Features on behalf of a model or user.
 _Avoid_: agent, consumer, caller

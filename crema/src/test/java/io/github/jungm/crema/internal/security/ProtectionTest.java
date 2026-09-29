@@ -1,6 +1,7 @@
 package io.github.jungm.crema.internal.security;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.net.URI;
@@ -174,21 +175,33 @@ class ProtectionTest {
         assertEquals(List.of(), problems);
     }
 
+    /**
+     * Without MicroProfile Config there is no OAuth; whether the MCP Server has an McpAuthenticator instead is
+     * checked at deployment.
+     */
     @Test
-    void protectedServerNeedsMicroProfileConfig() {
+    void noOAuthWithoutMicroProfileConfig() {
         assertEquals(Optional.empty(), resolve(Protected.class,
                 MapConfig.of(Map.of("crema.default-server.issuer", "https://as.example.com"))));
-        assertEquals(1, problems.size());
-        assertTrue(problems.get(0).contains("MicroProfile Config isn't available"), problems.get(0));
-        assertTrue(problems.get(0).contains(Protected.class.getName()), problems.get(0));
+        assertEquals(List.of(), problems);
     }
 
     @Test
-    void protectedServerNeedsAnIssuer() {
+    void noOAuthWithoutAnIssuer() {
         assertEquals(Optional.empty(), resolve(DenyAllApp.class,
                 microProfile(Map.of("crema.servers.admin.resource", RESOURCE))));
-        assertEquals(1, problems.size());
-        assertTrue(problems.get(0).contains("crema.servers.admin.issuer isn't set"), problems.get(0));
+        assertEquals(Optional.empty(), resolve(DenyAllApp.class,
+                microProfile(Map.of("crema.servers.admin.issuer", "  "))));
+        assertEquals(List.of(), problems);
+    }
+
+    @Test
+    void onlyRolesAllowedOrDenyAllOnTheApplicationProtect() {
+        assertTrue(Protection.isProtected(Protected.class));
+        assertTrue(Protection.isProtected(DenyAllApp.class));
+        assertTrue(Protection.isProtected(Inherits.class));
+        assertFalse(Protection.isProtected(Plain.class));
+        assertFalse(Protection.isProtected(PermitAllApp.class));
     }
 
     @Test
