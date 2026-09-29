@@ -27,6 +27,7 @@ import io.github.jungm.crema.internal.model.ApplicationMethod;
 import io.github.jungm.crema.internal.model.McpServerModel;
 import io.github.jungm.crema.internal.protocol.Rejection;
 import jakarta.json.JsonObject;
+import jakarta.json.JsonObjectBuilder;
 
 /**
  * Decides who may use the MCP Servers of an application and their Features: role checks with
@@ -36,8 +37,8 @@ import jakarta.json.JsonObject;
  * <li>On an open MCP Server the caller and its roles are the Runtime's.</li>
  * <li>On a protected MCP Server every request needs a bearer token that {@link TokenValidator} accepts, and the
  * caller and its roles come from the token. Without one the response is a {@code 401} challenge that points to the
- * Protected Resource Metadata; with an invalid one it is a {@code 401} with {@code error="invalid_token"}. Why a
- * token was rejected is logged, never returned.</li>
+ * Protected Resource Metadata; with an invalid one it is a {@code 401} with {@code error="invalid_token"}. Both
+ * challenges carry the configured scopes, if any. Why a token was rejected is logged, never returned.</li>
  * </ul>
  */
 public final class CremaAccessPolicy implements Closeable {
@@ -123,23 +124,23 @@ public final class CremaAccessPolicy implements Closeable {
         if (access.protection() == null) {
             return caller;
         }
-        String metadata = access.protection().resourceMetadataUrl();
+        Protection protection = access.protection();
         if (authorization.isEmpty()) {
-            throw challenge(metadata, null);
+            throw challenge(protection, null);
         }
         if (authorization.size() > 1) {
             LOG.fine(() -> "Rejected a request to MCP Server '" + access.protection().server()
                     + "' with more than one Authorization header");
-            throw challenge(metadata, "invalid_token");
+            throw challenge(protection, "invalid_token");
         }
         String value = authorization.get(0).strip();
         int space = value.indexOf(' ');
         String scheme = space < 0 ? value : value.substring(0, space);
         if (!scheme.equalsIgnoreCase(BEARER)) {
-            throw challenge(metadata, null);
+            throw challenge(protection, null);
         }
         String token = space < 0 ? "" : value.substring(space + 1).stripLeading();
-        return validate(server, access, token).orElseThrow(() -> challenge(metadata, "invalid_token"));
+        return validate(server, access, token).orElseThrow(() -> challenge(protection, "invalid_token"));
     }
 
     /**
@@ -184,19 +185,22 @@ public final class CremaAccessPolicy implements Closeable {
     }
 
     /**
-     * The Protected Resource Metadata (RFC 9728) of a protected MCP Server; empty for other MCP Servers. It
-     * doesn't depend on the request.
+     * The Protected Resource Metadata (RFC 9728) of a protected MCP Server, with {@code scopes_supported} if
+     * scopes are configured; empty for other MCP Servers. It doesn't depend on the request.
      */
     public Optional<JsonObject> resourceMetadata(McpServerModel server) {
-        McpServerAccess access = access(server);
-        if (access.protection() == null) {
+        Protection protection = access(server).protection();
+        if (protection == null) {
             return Optional.empty();
         }
-        return Optional.of(Json.object()
-                .add("resource", access.protection().resource())
-                .add("authorization_servers", Json.FACTORY.createArrayBuilder().add(access.protection().issuer()))
-                .add("bearer_methods_supported", Json.FACTORY.createArrayBuilder().add("header"))
-                .build());
+        JsonObjectBuilder metadata = Json.object()
+                .add("resource", protection.resource())
+                .add("authorization_servers", Json.FACTORY.createArrayBuilder().add(protection.issuer()))
+                .add("bearer_methods_supported", Json.FACTORY.createArrayBuilder().add("header"));
+        if (!protection.scopes().isEmpty()) {
+            metadata.add("scopes_supported", Json.FACTORY.createArrayBuilder(protection.scopes()));
+        }
+        return Optional.of(metadata.build());
     }
 
     /**
@@ -280,9 +284,10 @@ public final class CremaAccessPolicy implements Closeable {
         return access;
     }
 
-    private static Rejection challenge(String metadataUrl, String error) {
+    private static Rejection challenge(Protection protection, String error) {
         return new Rejection(401, Map.of(WWW_AUTHENTICATE, BEARER + " "
-                + (error == null ? "" : "error=\"" + error + "\", ") + "resource_metadata=\"" + metadataUrl + "\""),
-                null);
+                + (error == null ? "" : "error=\"" + error + "\", ")
+                + (protection.scopes().isEmpty() ? "" : "scope=\"" + String.join(" ", protection.scopes()) + "\", ")
+                + "resource_metadata=\"" + protection.resourceMetadataUrl() + "\""), null);
     }
 }

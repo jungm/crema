@@ -118,11 +118,11 @@ For every other JSON-RPC error, such as unknown tool `-32602`, bad prompt argume
 
 The design's choice is fine. Just be aware that both readings exist.
 
-### G14. `WWW-Authenticate` `scope` is a SHOULD that the design deliberately skips
+### G14. `WWW-Authenticate` `scope` is a SHOULD that the design only partly follows
 - "MCP servers **SHOULD** include a `scope` parameter in the `WWW-Authenticate` header" (basic/authorization#scope-selection-strategy).
 - For `403`: "`scope="required_scope1 required_scope2"` - specifying the minimum scopes needed" (basic/authorization#runtime-insufficient-scope-errors).
 
-The design says "challenges carry no `scope` parameter". That's a conscious deviation from a SHOULD, so keep it listed as one.
+The design sends `scope` on `401` challenges when `scopes` is configured, and never on `403`, since a missing role can't be fixed by requesting scopes. The `403` side is a conscious deviation from a SHOULD, so keep it listed as one.
 
 ### G15. Protected Resource Metadata location vs RFC 9728 well-known paths
 The design serves the metadata at `<MCP Endpoint>/.well-known/oauth-protected-resource`, for example `/app/mcp/.well-known/oauth-protected-resource`. That isn't one of the RFC 9728 well-known locations the spec lists:

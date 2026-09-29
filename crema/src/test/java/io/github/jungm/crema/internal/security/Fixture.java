@@ -232,8 +232,13 @@ final class Fixture {
 
     static Protection protection(FakeAuthorizationServer as, String server, String resource, String rolesClaim,
             boolean discover) {
+        return protection(as, server, resource, rolesClaim, discover, List.of());
+    }
+
+    static Protection protection(FakeAuthorizationServer as, String server, String resource, String rolesClaim,
+            boolean discover, List<String> scopes) {
         return new Protection(server, as.issuer(), discover ? null : java.net.URI.create(as.jwksUri()), resource,
-                rolesClaim, "sub", 60);
+                rolesClaim, "sub", 60, scopes);
     }
 
     /**

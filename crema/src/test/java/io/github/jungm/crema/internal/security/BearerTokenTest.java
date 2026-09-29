@@ -88,6 +88,20 @@ class BearerTokenTest {
     }
 
     @Test
+    void challengesCarryTheScopes() {
+        fixture = new Fixture(
+                Fixture.protection(as, "default", ENDPOINT, "groups", false, List.of("crema", "openid")),
+                Fixture.protection(as, "other", OTHER_ENDPOINT, "groups", false));
+        Exchange missing = fixture.callTool(fixture.protectedServer, RequestCaller.anonymous(), "everyone");
+        assertEquals(401, missing.status());
+        assertEquals("Bearer scope=\"crema openid\", resource_metadata=\"" + METADATA + "\"", missing.challenge());
+        Exchange invalid = whoamiWithToken(as.token(OTHER_ENDPOINT));
+        assertEquals(401, invalid.status());
+        assertEquals("Bearer error=\"invalid_token\", scope=\"crema openid\", resource_metadata=\"" + METADATA
+                + "\"", invalid.challenge());
+    }
+
+    @Test
     void everyMethodNeedsAToken() {
         fixture(false);
         for (String method : List.of("server/discover", "tools/list", "prompts/list")) {

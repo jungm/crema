@@ -10,6 +10,6 @@ Not supported (yet):
 - `x-mcp-header` / `Mcp-Param-*` headers.
 - CORS: browser-based MCP Clients on a foreign origin need an allowlisted origin, and Crema answers no preflights.
 - OAuth: one issuer per MCP Server; JWT access tokens only (no token introspection); scopes aren't mapped to roles,
-  and challenges carry no `scope`.
+  and `403` challenges carry no `scope`.
 - Packaging: Crema must be in each WAR's `WEB-INF/lib`. It can't be shared through an EAR's `lib/` directory or a
   Runtime-level shared library, and each WAR needs CDI enabled.

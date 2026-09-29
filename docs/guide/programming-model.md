@@ -145,6 +145,7 @@ Crema checks the model when the application starts and fails the deployment, nam
   - a protected MCP Server without MicroProfile Config, without `issuer`, or without a well-formed `resource` (the
     absolute `http(s)` URL of the MCP Endpoint, without user info, query or fragment)
   - an `issuer` or `jwks-uri` that isn't an `https` URL (`http` only for `localhost`)
+  - a `scopes` entry that isn't an OAuth scope token (no whitespace, `"` or `\`)
 - Packaging: Crema shared between several web applications, or an `McpApplication` in a WAR where CDI is not active
 
 Two Resource Templates of the same shape in one MCP Server, such as `db:///{table}` and `db:///{name}`, only log a

@@ -16,6 +16,7 @@ named one (`crema.servers.admin.title`, ...).
 | `<prefix>roles-claim` | `groups` | Dotted path of the claim that holds the caller's roles |
 | `<prefix>principal-claim` | `sub` | Dotted path of the claim that holds the caller's name; tokens without it as a non-empty string are rejected |
 | `<prefix>clock-skew-seconds` | `60` | Tolerated clock skew for `exp` and `nbf` |
+| `<prefix>scopes` | none | Comma-separated OAuth scopes MCP Clients should request, sent as `scopes_supported` and in `401` challenges |
 | `crema.origin.allowed` | empty (loopback only) | Comma-separated `Origin`s that may call the MCP Endpoints; `*` disables the check |
 | `crema.cache.list-ttl-ms` | `300000` | `ttlMs` caching hint on `server/discover` and list results |
 | `crema.max-request-bytes` | `4194304` | Largest accepted request body; larger ones get `413` |

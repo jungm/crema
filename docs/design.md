@@ -14,7 +14,7 @@ Crema is an MCP server implementation for Jakarta EE. It implements the `org.mcp
 
 ## 2. Protocol
 
-- [protocol-notes.md](protocol-notes.md) digests the spec. Its "Design gaps" G1–G3, G5–G11 and G16 are part of this design. G0 is resolved in §7, G4 by §8 (cancellation stays out), G12 by "JSON-RPC errors use HTTP 200 unless the spec names a status", G13 by following what the conformance suite expects, G14 by §7 (no `scope`), and G15 by §7's Resource Identifier rule. The one exception to G16: application code can't raise `-32021`.
+- [protocol-notes.md](protocol-notes.md) digests the spec. Its "Design gaps" G1–G3, G5–G11 and G16 are part of this design. G0 is resolved in §7, G4 by §8 (cancellation stays out), G12 by "JSON-RPC errors use HTTP 200 unless the spec names a status", G13 by following what the conformance suite expects, G14 by §7 (`scope` on `401` only), and G15 by §7's Resource Identifier rule. The one exception to G16: application code can't raise `-32021`.
 - Implement MCP revision **`2026-07-28` only**, over **Streamable HTTP** only. Read the spec, don't guess: https://modelcontextprotocol.io/specification/2026-07-28 (key pages: `basic/transports/streamable-http`, `basic/versioning`, `server/discover`, `server/tools`, `server/resources`, `server/prompts`, `server/utilities/completion`, `basic/patterns/progress`, `basic/authorization`, `schema`, `changelog`).
 - Stateless: no sessions, no `initialize` handshake, no `Mcp-Session-Id` (ignore it if sent; never mint one). `GET` and `DELETE` on the MCP Endpoint return `405`. That comes after the Origin check and, for protected MCP Servers, authentication, so an unauthenticated `GET` gets `401`. `Last-Event-ID` is ignored.
 - Every request carries `_meta` keys `io.modelcontextprotocol/protocolVersion`, `io.modelcontextprotocol/clientCapabilities` and (SHOULD) `io.modelcontextprotocol/clientInfo`. Any version other than `2026-07-28` produces `400` with `UnsupportedProtocolVersionError` listing `["2026-07-28"]`.
@@ -99,17 +99,19 @@ Each of these, among other checks the README lists, fails deployment with the of
     - `roles-claim`: a dotted path, default `groups`. It accepts `realm_access.roles` for Keycloak and `roles` for Entra ID.
     - `principal-claim`: a dotted path, default `sub`. A token without it as a non-empty string is rejected.
     - `clock-skew-seconds`: default `60`.
+    - `scopes`: optional, comma-separated RFC 6749 scope tokens. Deployment fails on one that isn't a valid scope token.
   - Deployment fails if a protected MCP Server has no `issuer` or `resource`, or if MP Config is absent.
   - Nimbus setup: `JWKSourceBuilder` (with caching, rate limiting and outage tolerance), a `DefaultJWTProcessor` limited to the asymmetric algorithms `RS256/384/512`, and `PS256/384/512`, `ES256/384/512`, a `typ` of `at+jwt` or `JWT` (or absent), and a `DefaultJWTClaimsVerifier` requiring `iss` = issuer, `aud` ∋ Resource Identifier, and `exp`, and checking `nbf` with the configured skew. No `none`, no HMAC.
   - Responses:
     - No `Authorization: Bearer` header: `401` with `WWW-Authenticate: Bearer resource_metadata="<MCP Endpoint>/.well-known/oauth-protected-resource"`.
     - Any validation failure: `401` with `error="invalid_token"` and `resource_metadata`. Details are logged, never returned.
   - On success, the request is processed for the token's caller: principal name from `principal-claim`, roles from `roles-claim`. A `Bearer` credential that isn't exactly one RFC 6750 `b64token` (whitespace, other characters, a repeated `Authorization` header) is `invalid_token`.
-  - Protected Resource Metadata (RFC 9728) is served unauthenticated at `<MCP Endpoint>/.well-known/oauth-protected-resource`: `resource` is the Resource Identifier, `authorization_servers` is [issuer], and `bearer_methods_supported` is [`header`].
+  - Both `401` challenges carry `scope="<scopes, space-separated>"` when `scopes` is set.
+  - Protected Resource Metadata (RFC 9728) is served unauthenticated at `<MCP Endpoint>/.well-known/oauth-protected-resource`: `resource` is the Resource Identifier, `authorization_servers` is [issuer], `bearer_methods_supported` is [`header`], and `scopes_supported` is the `scopes` when set.
   - Resource Identifier = the `resource` config: the MCP Endpoint's public URL. It is never derived from the request, because the `Host` header is attacker-controlled and would let a token issued for another resource of the same Authorization Server pass the audience check. RFC 9728 §3.3 requires it to equal the URL clients use.
   - Tokens are never forwarded anywhere (no passthrough).
 - **Caller for Feature Methods**: Injected Parameter `io.github.jungm.crema.McpCaller` (public API: `Principal`, plus `Map<String, Object> claims()`, empty for open MCP Servers) and plain `java.security.Principal`. Both are `null` for anonymous callers. The container (EJB `@RolesAllowed`, Jakarta Security `SecurityContext`, CDI `Principal`) does **not** see token callers.
-- OAuth scopes aren't mapped, and challenges carry no `scope` parameter.
+- OAuth scopes aren't mapped to roles, and the token's `scope` claim isn't checked. `scopes` only tells MCP Clients what to request. `403` challenges carry no `scope` parameter: roles aren't scopes, so no scope would let a client step up.
 
 ## 8. Out of scope for milestone 1
 

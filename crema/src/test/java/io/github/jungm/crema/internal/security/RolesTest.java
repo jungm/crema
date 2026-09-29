@@ -217,6 +217,17 @@ class RolesTest {
     }
 
     @Test
+    void protectedResourceMetadataListsTheScopes() {
+        fixture = new Fixture(Fixture.protection(as, "default", ENDPOINT, "groups", false, List.of("crema", "openid")),
+                Fixture.protection(as, "other", OTHER_ENDPOINT, "groups", false));
+        HttpReply metadata = fixture.transport.resourceMetadata(fixture.protectedServer, "GET");
+        assertEquals(Json.parse("{\"resource\":\"" + ENDPOINT + "\",\"authorization_servers\":[\"" + as.issuer()
+                + "\"],\"bearer_methods_supported\":[\"header\"],\"scopes_supported\":[\"crema\",\"openid\"]}"),
+                Json.parse(metadata.body()));
+        assertEquals(FORBIDDEN, fixture.callTool(fixture.protectedServer, user(), "admins").challenge());
+    }
+
+    @Test
     void hiddenProgressToolIsForbiddenBeforeAnyStreamStarts() {
         fixture("groups");
         String progressToken = ",\"progressToken\":\"p\"";

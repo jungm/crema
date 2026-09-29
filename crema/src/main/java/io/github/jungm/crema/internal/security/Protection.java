@@ -2,10 +2,13 @@ package io.github.jungm.crema.internal.security;
 
 import java.net.URI;
 import java.net.URISyntaxException;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
+import java.util.Set;
 import java.util.logging.Logger;
+import java.util.regex.Pattern;
 
 import io.github.jungm.crema.internal.config.ConfigLookup;
 import io.github.jungm.crema.internal.config.ConfigValues;
@@ -22,9 +25,11 @@ import io.github.jungm.crema.internal.config.McpServerSettings;
  * @param rolesClaim the dotted path of the claim that holds the caller's roles
  * @param principalClaim the dotted path of the claim that holds the caller's name
  * @param clockSkewSeconds the tolerated clock skew for {@code exp} and {@code nbf}
+ * @param scopes the OAuth scopes that MCP Clients should request, as {@code scopes_supported} in the Protected
+ *        Resource Metadata and {@code scope} in {@code 401} challenges; empty for none
  */
 public record Protection(String server, String issuer, URI jwksUri, String resource, String rolesClaim,
-        String principalClaim, int clockSkewSeconds) {
+        String principalClaim, int clockSkewSeconds, List<String> scopes) {
 
     private static final String ISSUER = "issuer";
     private static final String JWKS_URI = "jwks-uri";
@@ -32,6 +37,13 @@ public record Protection(String server, String issuer, URI jwksUri, String resou
     private static final String PRINCIPAL_CLAIM = "principal-claim";
     private static final String CLOCK_SKEW_SECONDS = "clock-skew-seconds";
     private static final String RESOURCE = "resource";
+    private static final String SCOPES = "scopes";
+
+    /**
+     * The syntax of an RFC 6749 §3.3 {@code scope-token}, without the comma that separates scopes in the
+     * configuration.
+     */
+    private static final Pattern SCOPE_TOKEN = Pattern.compile("[\\x21\\x23-\\x2B\\x2D-\\x5B\\x5D-\\x7E]+");
 
     /**
      * The path of the Protected Resource Metadata (RFC 9728), relative to the Resource Identifier.
@@ -43,6 +55,10 @@ public record Protection(String server, String issuer, URI jwksUri, String resou
     private static final int DEFAULT_CLOCK_SKEW_SECONDS = 60;
 
     private static final Logger LOG = Logger.getLogger(Protection.class.getName());
+
+    public Protection {
+        scopes = List.copyOf(scopes);
+    }
 
     /**
      * Resolves the protection of the MCP Server that an {@code McpApplication} subclass declares.
@@ -92,13 +108,15 @@ public record Protection(String server, String issuer, URI jwksUri, String resou
                 return DEFAULT_CLOCK_SKEW_SECONDS;
             }
         }).orElse(DEFAULT_CLOCK_SKEW_SECONDS);
+        List<String> scopes = config.get(prefix + SCOPES)
+                .map(value -> scopes(value, prefix + SCOPES, where, problems)).orElse(List.of());
         if (problems.size() > before) {
             return Optional.empty();
         }
         return Optional.of(new Protection(settings.wireName(), issuer.get(), jwksUri, resource,
                 config.get(prefix + ROLES_CLAIM).map(String::trim).orElse(DEFAULT_ROLES_CLAIM),
                 config.get(prefix + PRINCIPAL_CLAIM).map(String::trim).orElse(DEFAULT_PRINCIPAL_CLAIM),
-                clockSkew));
+                clockSkew, scopes));
     }
 
     /**
@@ -139,6 +157,26 @@ public record Protection(String server, String issuer, URI jwksUri, String resou
             problems.add(where + ": " + key + " isn't a valid URL: " + e.getMessage());
             return null;
         }
+    }
+
+    /**
+     * Parses a comma-separated list of scopes, ignoring whitespace around each one and duplicates.
+     */
+    private static List<String> scopes(String value, String key, String where, List<String> problems) {
+        Set<String> scopes = new LinkedHashSet<>();
+        for (String scope : value.split(",")) {
+            String trimmed = scope.strip();
+            if (trimmed.isEmpty()) {
+                continue;
+            }
+            if (!SCOPE_TOKEN.matcher(trimmed).matches()) {
+                problems.add(where + ": " + key + " must be a comma-separated list of OAuth scopes without "
+                        + "whitespace, '\"' or '\\', but contains '" + trimmed + "'");
+            } else {
+                scopes.add(trimmed);
+            }
+        }
+        return List.copyOf(scopes);
     }
 
     private static void checkResource(String value, String key, String where, List<String> problems) {

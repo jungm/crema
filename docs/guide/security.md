@@ -46,6 +46,11 @@ crema.default-server.roles-claim=realm_access.roles
 - The Authorization Server must put the `resource` URL into the access token's `aud` claim. In Keycloak, add an
   *Audience* mapper to the client scope your MCP Clients get, with *Included Custom Audience* set to the `resource`
   URL. Tokens for other audiences, such as those for your REST API or for another MCP Server, are rejected.
+- `scopes` (optional, comma-separated) are the OAuth scopes MCP Clients should request. Crema lists them as
+  `scopes_supported` in the Protected Resource Metadata and as `scope` in its `401` challenges, and MCP Clients put
+  them into their authorization request. This lets a client scope that carries the *Audience* mapper be *Optional*
+  instead of *Default*: set `crema.default-server.scopes=crema` for a Keycloak client scope named `crema`. Crema
+  doesn't check the token's `scope` claim; the `aud` check stays what protects the MCP Server.
 - The JWK set is found through the issuer's `/.well-known/openid-configuration` (or
   `/.well-known/oauth-authorization-server`); set `jwks-uri` to skip discovery. Keys are cached and refreshed when a
   token names an unknown key.
@@ -54,7 +59,8 @@ crema.default-server.roles-claim=realm_access.roles
 
 Crema's responses follow the MCP authorization spec: no token gives `401` with `WWW-Authenticate: Bearer
 resource_metadata="…"`, an invalid token gives `401` with `error="invalid_token"` (the reason is logged, not sent),
-and a missing role gives `403` with `error="insufficient_scope"`. A token is invalid, among other reasons, when its
+and a missing role gives `403` with `error="insufficient_scope"`. Both `401` challenges carry `scope="…"` when
+`scopes` is set; the `403` doesn't, because roles aren't scopes and requesting the same scopes again wouldn't help. A token is invalid, among other reasons, when its
 `principal-claim` isn't a non-empty string. The Protected Resource Metadata (RFC 9728) that MCP
 Clients use to find the Authorization Server is served at `<MCP Endpoint>/.well-known/oauth-protected-resource`.
 

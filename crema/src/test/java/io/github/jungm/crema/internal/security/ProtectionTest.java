@@ -95,7 +95,7 @@ class ProtectionTest {
                 microProfile(Map.of("crema.default-server.issuer", "https://as.example.com/realms/x"))).orElseThrow();
         assertEquals(List.of(), problems);
         assertEquals(new Protection("default", "https://as.example.com/realms/x", null, RESOURCE, "groups", "sub",
-                60), protection);
+                60, List.of()), protection);
         assertEquals(RESOURCE + "/.well-known/oauth-protected-resource", protection.resourceMetadataUrl());
     }
 
@@ -125,7 +125,7 @@ class ProtectionTest {
     void metadataUrlIgnoresTrailingSlashesOfTheResource() {
         assertEquals("https://mcp.example.com/mcp/.well-known/oauth-protected-resource",
                 new Protection("default", "https://as.example.com", null, "https://mcp.example.com/mcp/", "groups",
-                        "sub", 60).resourceMetadataUrl());
+                        "sub", 60, List.of()).resourceMetadataUrl());
     }
 
     @Test
@@ -137,10 +137,32 @@ class ProtectionTest {
         values.put("crema.servers.admin.roles-claim", "realm_access.roles");
         values.put("crema.servers.admin.principal-claim", "preferred_username");
         values.put("crema.servers.admin.clock-skew-seconds", "5");
+        values.put("crema.servers.admin.scopes", "openid, mcp:tools");
         assertEquals(Optional.of(new Protection("admin", "https://as.example.com",
                 URI.create("https://as.example.com/keys"), "https://mcp.example.com/admin", "realm_access.roles",
-                "preferred_username", 5)), resolve(DenyAllApp.class, microProfile(values)));
+                "preferred_username", 5, List.of("openid", "mcp:tools"))),
+                resolve(DenyAllApp.class, microProfile(values)));
         assertEquals(List.of(), problems);
+    }
+
+    @Test
+    void scopesIgnoreEmptyEntriesAndDuplicates() {
+        assertEquals(List.of("crema", "openid"), resolve(Protected.class, microProfile(Map.of(
+                "crema.default-server.issuer", "https://as.example.com",
+                "crema.default-server.scopes", " crema,,openid , crema, "))).orElseThrow().scopes());
+        assertEquals(List.of(), problems);
+    }
+
+    @Test
+    void scopesMustBeScopeTokens() {
+        for (String scopes : List.of("openid profile", "a\"b", "a\\b", "caf\u00e9")) {
+            problems.clear();
+            assertEquals(Optional.empty(), resolve(Protected.class, microProfile(Map.of(
+                    "crema.default-server.issuer", "https://as.example.com",
+                    "crema.default-server.scopes", scopes))), scopes);
+            assertEquals(1, problems.size(), scopes);
+            assertTrue(problems.get(0).contains("crema.default-server.scopes"), problems.get(0));
+        }
     }
 
     @Test
