@@ -134,8 +134,8 @@ class AuthenticatorTest {
             }
         };
         Authenticator bound = new Authenticator(ApiKeys.class, Set.of(McpServer.DEFAULT, "open"), instances);
-        CremaAccessPolicy.Result result = CremaAccessPolicy.create(registry.servers(), Map.of(),
-                Map.of(ProtectedApp.class, bound, OpenApp.class, bound));
+        CremaAccessPolicy.Result result = CremaAccessPolicy.create(registry.servers(),
+                Map.of(ProtectedApp.class, new BeanMechanism(bound), OpenApp.class, new BeanMechanism(bound)));
         assertEquals(List.of(), result.problems());
         policy = result.policy();
         transport = new McpTransport(registry, TestDeployment.create().dispatcher(policy));

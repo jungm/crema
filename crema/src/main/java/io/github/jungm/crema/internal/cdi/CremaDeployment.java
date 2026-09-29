@@ -25,7 +25,10 @@ import io.github.jungm.crema.internal.model.McpServerRegistry;
 import io.github.jungm.crema.internal.protocol.Dispatcher;
 import io.github.jungm.crema.internal.protocol.Services;
 import io.github.jungm.crema.internal.security.Authenticator;
+import io.github.jungm.crema.internal.security.BeanMechanism;
 import io.github.jungm.crema.internal.security.CremaAccessPolicy;
+import io.github.jungm.crema.internal.security.Mechanism;
+import io.github.jungm.crema.internal.security.OAuthMechanism;
 import io.github.jungm.crema.internal.security.Protection;
 import jakarta.servlet.ServletContext;
 import jakarta.servlet.ServletContextEvent;
@@ -241,8 +244,11 @@ public final class CremaDeployment {
         if (!problems.isEmpty()) {
             return problems;
         }
-        CremaAccessPolicy.Result policy = CremaAccessPolicy.create(result.registry().servers(), protections,
-                authenticators);
+        Map<Class<?>, Mechanism> mechanisms = new HashMap<>();
+        protections.forEach((application, protection) -> mechanisms.put(application, new OAuthMechanism(protection)));
+        authenticators.forEach((application, authenticator) -> mechanisms.put(application,
+                new BeanMechanism(authenticator)));
+        CremaAccessPolicy.Result policy = CremaAccessPolicy.create(result.registry().servers(), mechanisms);
         problems.addAll(policy.problems());
         if (!problems.isEmpty()) {
             policy.policy().close();

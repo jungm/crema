@@ -217,10 +217,10 @@ final class Fixture {
                 .bean(OtherFeatures.class, new OtherFeatures()).bean(OpenFeatures.class, new OpenFeatures())
                 .bean(PlainFeatures.class, new PlainFeatures());
         McpServerRegistry registry = deployment.registry();
-        Map<Class<?>, Protection> protections = new HashMap<>();
-        protections.put(ProtectedApp.class, defaultProtection);
-        protections.put(OtherApp.class, otherProtection);
-        CremaAccessPolicy.Result result = CremaAccessPolicy.create(registry.servers(), protections, Map.of(), FAST);
+        Map<Class<?>, Mechanism> mechanisms = new HashMap<>();
+        mechanisms.put(ProtectedApp.class, new OAuthMechanism(defaultProtection, FAST));
+        mechanisms.put(OtherApp.class, new OAuthMechanism(otherProtection, FAST));
+        CremaAccessPolicy.Result result = CremaAccessPolicy.create(registry.servers(), mechanisms);
         assertEquals(List.of(), result.problems());
         policy = result.policy();
         transport = new McpTransport(registry, deployment.dispatcher(policy));

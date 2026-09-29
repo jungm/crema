@@ -135,7 +135,7 @@ public final class TestDeployment {
     }
 
     private static CremaAccessPolicy openPolicy(McpServerRegistry registry) {
-        CremaAccessPolicy.Result policy = CremaAccessPolicy.create(registry.servers(), Map.of(), Map.of());
+        CremaAccessPolicy.Result policy = CremaAccessPolicy.create(registry.servers(), Map.of());
         assertEquals(List.of(), policy.problems(), "problems building the access policy");
         return policy.policy();
     }
