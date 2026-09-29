@@ -4,7 +4,7 @@ Crema is an MCP server implementation for Jakarta EE. It implements the `org.mcp
 
 ## 1. Platform
 
-- Coordinates: `io.github.jungm:crema` (library) and `io.github.jungm:crema-it` (integration tests, not deployed). Apache-2.0. Base package `io.github.jungm.crema`.
+- Coordinates: `io.github.jungm.crema:crema` (library) and `io.github.jungm.crema:crema-it` (integration tests, not deployed). Apache-2.0. Base package `io.github.jungm.crema`.
 - Bytecode: Java 17 (`maven.compiler.release=17`). The build and tests run on JDK 21.
 - Compile-scope APIs (all `provided`): Jakarta EE 10 Web Profile (`jakarta.platform:jakarta.jakartaee-web-api:10.0.0`), and **optional** `org.eclipse.microprofile.config:microprofile-config-api`. Crema must work when MP Config is absent at runtime: guard every use behind a class-presence check and keep MicroProfile types out of classes that are loaded unconditionally.
 - Runtime dependencies (compile scope, shipped transitively in `WEB-INF/lib`): `org.mcpjava:mcp-server-api:1.0.0` and `com.nimbusds:nimbus-jose-jwt` (latest 10.x, not relocated).
