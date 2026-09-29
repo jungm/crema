@@ -83,7 +83,9 @@ crema.default-server.resource=https://shop.example.com/shop/mcp
 - [Programming model](docs/guide/programming-model.md): Arguments, Injected Parameters, return types, multiple MCP
   Servers, deployment-time validation
 - [Configuration](docs/guide/configuration.md): all MicroProfile Config keys
-- [Security](docs/guide/security.md): Origin check, roles, OAuth-protected MCP Servers
+- [Security](docs/guide/security.md): Origin check and roles
+- [Authentication](docs/guide/authentication.md): protecting MCP Servers with OAuth, Basic authentication or your own
+  Authenticator
 - [Limitations](docs/guide/limitations.md): what isn't supported yet
 - [Building and testing](docs/guide/development.md): unit tests, integration tests on four Runtimes, conformance suite
 
